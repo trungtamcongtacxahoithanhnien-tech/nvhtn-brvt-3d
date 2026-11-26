@@ -47,11 +47,20 @@
   .evhead button { padding:2px 9px; }
   .evgrid { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:8px; }
   .evgrid button { text-align:left; padding:6px 8px; font-size:11.5px; }
+  #evParams { grid-template-columns:repeat(3,1fr); gap:6px; margin-top:8px; padding:8px; background:#fff7ec; border:1px solid #ffd59a; border-radius:8px; }
+  #evParams .evptitle { grid-column:1/-1; font-size:12px; font-weight:600; }
+  #evParams label { font-size:11px; color:var(--muted); display:flex; flex-direction:column; gap:2px; }
+  #evParams input { font:inherit; font-size:13px; width:100%; padding:4px 6px; border:1px solid #d3d9e1; border-radius:6px; color:var(--ink); }
   #evStats { font-size:12px; margin-top:8px; line-height:1.5; }
   .evhint { font-size:11px; color:var(--muted); margin-top:6px; }
   #evPasteBox textarea { width:100%; height:60px; margin-top:6px; font-size:11px; }
   .evlbl { background:#ff8a00; color:#fff; font-size:11.5px; font-weight:600; padding:3px 8px; border-radius:6px; white-space:nowrap; }
   @media (max-height: 820px) { #note { display:none; } #evPanel { max-height:calc(100% - 290px); } }
+  #nav { right:12px; bottom:12px; padding:8px; width:150px; }
+  #nav .wide { width:100%; margin-bottom:6px; font-size:11.5px; padding:5px 4px; }
+  #nav .pad { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; }
+  #nav .pad button { padding:6px 0; font-size:15px; line-height:1; touch-action:none; user-select:none; }
+  .panning canvas { cursor:grab; }
   .hide-labels .lbl { display:none; }
   .hide-ctx .lbl.ctx { display:none; }
   @media (max-width: 1100px) { #note { display:none; } }
@@ -59,6 +68,7 @@
     #legend { top:auto; bottom:150px; right:12px; left:12px; width:auto; max-height:22%; }
     #note { display:none; }
     #top { right:12px; max-width:none; }
+    #nav { bottom:auto; top:200px; width:126px; }
     #evPanel { top:auto; bottom:calc(22% + 170px); right:12px; width:auto; max-height:25%; }
   }
 </style>
@@ -109,8 +119,16 @@
   <ol id="zones"></ol>
 </div>
 
+<div id="nav" class="panel">
+  <button id="navMode" class="wide" title="Bật: kéo chuột trái / 1 ngón để di chuyển bản đồ. Tắt: kéo để xoay">✋ Kéo để di chuyển</button>
+  <div class="pad">
+    <button data-nav="rotL" title="Xoay trái">⟲</button><button data-nav="up" title="Tiến lên (↑)">▲</button><button data-nav="rotR" title="Xoay phải">⟳</button>
+    <button data-nav="left" title="Sang trái (←)">◀</button><button data-nav="home" title="Về góc nhìn tổng thể">⌂</button><button data-nav="right" title="Sang phải (→)">▶</button>
+    <button data-nav="in" title="Phóng to (+)">＋</button><button data-nav="down" title="Lùi lại (↓)">▼</button><button data-nav="out" title="Thu nhỏ (−)">－</button>
+  </div>
+</div>
 <div id="measureInfo" class="panel">Bấm 2 điểm trên mặt sân để đo · <span id="mval"></span> <button id="mclear" style="margin-left:8px">Xóa</button></div>
-<div id="note" class="panel">Mặt bằng đo trên ảnh vệ tinh Google Maps (tỉ lệ 0,147 m/px, sai số ~1–2 m); chiều cao ước theo số tầng. Dùng để hình dung bố trí, không thay bản vẽ kỹ thuật. Kéo để xoay · cuộn để phóng to · chuột phải để di chuyển. <a id="glbLink" href="NhaVanHoaThanhNien_BRVT.glb" download style="display:none">⬇ Tải file 3D (.glb)</a></div>
+<div id="note" class="panel">Mặt bằng đo trên ảnh vệ tinh Google Maps (tỉ lệ 0,147 m/px, sai số ~1–2 m); chiều cao ước theo số tầng. Dùng để hình dung bố trí, không thay bản vẽ kỹ thuật. Kéo để xoay (hoặc bật ✋ để kéo di chuyển) · cuộn để phóng to · phím mũi tên để di chuyển, Shift+←/→ để xoay. <a id="glbLink" href="NhaVanHoaThanhNien_BRVT.glb" download style="display:none">⬇ Tải file 3D (.glb)</a></div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -329,6 +347,73 @@ renderer.domElement.addEventListener('pointerup', e => {
 });
 
 initEvents({ THREE, scene, camera, controls, renderer, CSS2DObject, host: app, isBusy: () => measuring });
+
+// ---------- ĐIỀU HƯỚNG: kéo để di chuyển, nút ←→↑↓, xoay, phóng to ----------
+controls.screenSpacePanning = false; // di chuyển song song mặt đất
+const MB_ROTATE = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+const MB_PAN = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+const navModeBtn = document.getElementById('navMode');
+function setPanMode(on) {
+  controls.mouseButtons = on ? MB_PAN : MB_ROTATE;
+  controls.touches = on ? { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE } : { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+  navModeBtn.classList.toggle('on', on);
+  navModeBtn.textContent = on ? '✋ Đang kéo để di chuyển' : '✋ Kéo để di chuyển';
+  document.body.classList.toggle('panning', on);
+  try { localStorage.setItem('nvhtn-panmode', on ? '1' : '0'); } catch { }
+}
+let panMode = false;
+try { panMode = localStorage.getItem('nvhtn-panmode') === '1'; } catch { }
+setPanMode(panMode);
+navModeBtn.onclick = () => { panMode = !panMode; setPanMode(panMode); };
+
+const _v = new THREE.Vector3(), _f = new THREE.Vector3(), _r = new THREE.Vector3();
+function navStep(kind, k = 1) {
+  anim = null;
+  const dist = camera.position.distanceTo(controls.target);
+  const step = Math.max(0.6, dist * 0.035) * k;
+  // hướng tới trước & sang phải chiếu lên mặt đất
+  camera.getWorldDirection(_f); _f.y = 0;
+  if (_f.lengthSq() < 1e-6) _f.set(0, 0, -1).applyQuaternion(camera.quaternion).setY(0);
+  if (_f.lengthSq() < 1e-6) _f.set(0, 1, 0).applyQuaternion(camera.quaternion).setY(0); // nhìn thẳng xuống
+  _f.normalize(); _r.crossVectors(_f, camera.up).normalize();
+  if (kind === 'left' || kind === 'right' || kind === 'up' || kind === 'down') {
+    _v.copy(kind === 'left' ? _r.clone().negate() : kind === 'right' ? _r : kind === 'up' ? _f : _f.clone().negate()).multiplyScalar(step);
+    camera.position.add(_v); controls.target.add(_v);
+  } else if (kind === 'rotL' || kind === 'rotR') {
+    const a = (kind === 'rotL' ? 1 : -1) * 0.035 * k;
+    _v.subVectors(camera.position, controls.target).applyAxisAngle(camera.up, a);
+    camera.position.copy(controls.target).add(_v);
+  } else if (kind === 'in' || kind === 'out') {
+    const f = kind === 'in' ? 0.94 : 1 / 0.94;
+    _v.subVectors(camera.position, controls.target).multiplyScalar(Math.pow(f, k));
+    const len = Math.min(controls.maxDistance, Math.max(controls.minDistance, _v.length()));
+    camera.position.copy(controls.target).add(_v.setLength(len));
+  } else if (kind === 'home') { setView('overview'); }
+  controls.update();
+}
+// giữ nút để chạy liên tục
+let navHold = null;
+document.querySelectorAll('[data-nav]').forEach(b => {
+  const start = e => {
+    e.preventDefault(); const kind = b.dataset.nav; navStep(kind);
+    if (kind === 'home') return;
+    let t = performance.now();
+    const loop = now => { if (!navHold) return; navStep(kind, Math.min(3, (now - t) / 16)); t = now; navHold.raf = requestAnimationFrame(loop); };
+    navHold = { raf: 0 }; setTimeout(() => { if (navHold) navHold.raf = requestAnimationFrame(loop); }, 250);
+  };
+  const stop = () => { if (navHold) cancelAnimationFrame(navHold.raf); navHold = null; };
+  b.addEventListener('pointerdown', start); b.addEventListener('pointerup', stop);
+  b.addEventListener('pointerleave', stop); b.addEventListener('pointercancel', stop);
+});
+// phím mũi tên (Shift + ←/→ để xoay), +/- phóng to
+const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', '+': 'in', '=': 'in', '-': 'out', '_': 'out' };
+window.addEventListener('keydown', e => {
+  if (/INPUT|TEXTAREA/.test(document.activeElement?.tagName)) return;
+  let kind = KEYMAP[e.key]; if (!kind) return;
+  if (e.shiftKey && kind === 'left') kind = 'rotL';
+  if (e.shiftKey && kind === 'right') kind = 'rotR';
+  e.preventDefault(); navStep(kind, 1.5);
+});
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
