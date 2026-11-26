@@ -67,6 +67,9 @@
   #nav .pad { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; }
   #nav .pad button { padding:6px 0; font-size:15px; line-height:1; touch-action:none; user-select:none; }
   .panning canvas { cursor:grab; }
+  #cleanBack { display:none; position:fixed; top:12px; right:12px; z-index:40; padding:8px 12px; border-radius:20px; background:rgba(255,255,255,.92); box-shadow:0 2px 10px rgba(0,0,0,.2); font-weight:600; }
+  body.clean .panel, body.clean #mtabs, body.clean #mtitle, body.clean .lbl, body.clean .evlbl, body.clean .mlbl { display:none !important; }
+  body.clean #cleanBack { display:block; }
   .hide-labels .lbl { display:none; }
   .hide-ctx .lbl.ctx { display:none; }
   @media (max-width: 1100px) { #note { display:none; } }
@@ -107,6 +110,7 @@
 </head>
 <body>
 <div id="app"></div>
+<button id="cleanBack" title="Hiện lại các bảng (phím H)">☰ Hiện bảng</button>
 <div id="mtitle" class="panel">Nhà Văn hóa Thanh niên Bà Rịa – Vũng Tàu</div>
 <nav id="mtabs">
   <button data-sheet="top"><b>👁</b>Xem</button>
@@ -131,6 +135,7 @@
     <button id="tCtx" class="on">Nhà xung quanh</button>
     <button id="tGrid">Lưới 5 m</button>
     <button id="tMeasure">📏 Đo khoảng cách</button>
+    <button id="tClean" title="Ẩn hết bảng và chú thích (phím H)">🖼 Chỉ xem mô hình</button>
   </div>
 </div>
 
@@ -168,8 +173,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { buildScene, FACADE_AZ } from './scene.js?v=5';
-import { initEvents } from './events.js?v=5';
+import { buildScene, FACADE_AZ } from './scene.js?v=6';
+import { initEvents } from './events.js?v=6';
 
 const app = document.getElementById('app');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -501,6 +506,17 @@ document.querySelectorAll('#mtabs button').forEach(b => b.onclick = () => openSh
 const closeOnMobile = () => { if (mobileQ.matches && document.body.dataset.sheet) openSheet(document.body.dataset.sheet); };
 document.querySelectorAll('#views button').forEach(b => b.addEventListener('click', closeOnMobile));
 document.querySelectorAll('#zones li').forEach(li => li.addEventListener('click', closeOnMobile));
+// ---------- chế độ chỉ xem mô hình ----------
+function setClean(on) {
+  document.body.classList.toggle('clean', on);
+  if (on && document.body.dataset.sheet) openSheet(document.body.dataset.sheet); // đóng bảng đang mở trên điện thoại
+  if (!on) shiftForSheet();
+}
+document.getElementById('tClean').onclick = () => setClean(true);
+document.getElementById('cleanBack').onclick = () => setClean(false);
+window.addEventListener('keydown', e => {
+  if ((e.key === 'h' || e.key === 'H') && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName)) setClean(!document.body.classList.contains('clean'));
+});
 window.__ready = true;
 </script>
 </body>
