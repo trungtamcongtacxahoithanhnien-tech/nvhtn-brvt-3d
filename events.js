@@ -2,6 +2,24 @@
 // Kéo để di chuyển · Q/E hoặc nút ⟲ ⟳ để xoay 15° · D nhân bản · Delete xóa.
 
 const LS_KEY = 'nvhtn-brvt-layout-v1';
+// Link chia sẻ luôn trỏ về bản GitHub Pages (trừ khi đang mở chính trang đó)
+const SHARE_BASE = /github\.io$/.test(location.hostname) ? location.origin + location.pathname : 'https://trungtamcongtacxahoithanhnien-tech.github.io/nvhtn-brvt-3d/';
+
+// ---------- mã hóa bố cục vào link (nén deflate + base64url) ----------
+const b64url = bytes => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+const unb64url = str => { const b = atob(str.replace(/-/g, '+').replace(/_/g, '/')); const out = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) out[i] = b.charCodeAt(i); return out; };
+async function encodeLayout(obj) {
+  let bytes = new TextEncoder().encode(JSON.stringify(obj)), tag = 'j';
+  if (window.CompressionStream) {
+    try { bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer()); tag = 'z'; } catch { }
+  }
+  return tag + b64url(bytes);
+}
+async function decodeLayout(str) {
+  let bytes = unb64url(str.slice(1));
+  if (str[0] === 'z') bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
 
 export function initEvents({ THREE, scene, camera, controls, renderer, CSS2DObject, host, isBusy }) {
   const M = (c, e = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, ...e });
@@ -160,11 +178,18 @@ export function initEvents({ THREE, scene, camera, controls, renderer, CSS2DObje
       <div id="evParams" style="display:none"></div>
       <div class="row">
         <button id="evSnap" class="on">Bắt lưới 0,5 m</button>
-        <button id="evCopy">Sao chép bố cục</button><button id="evPaste">Dán bố cục</button><button id="evClear">Xóa hết</button>
+        <button id="evShareBtn" class="primary">🔗 Chia sẻ bố cục</button><button id="evPaste">Mở link/mã</button><button id="evClear">Xóa hết</button>
       </div>
       <div id="evStats"></div>
       <div class="evhint">Bấm nút để thêm vào giữa màn hình · kéo vật thể để di chuyển · bấm chọn rồi xoay/nhân bản/xóa</div>
-      <div id="evPasteBox" style="display:none"><textarea id="evTa" placeholder="Dán mã bố cục vào đây"></textarea><button id="evPasteOk">Áp dụng</button></div>
+      <div id="evPasteBox" style="display:none"><textarea id="evTa" placeholder="Dán link chia sẻ hoặc mã bố cục vào đây"></textarea><button id="evPasteOk">Mở bố cục</button></div>
+      <div id="evShare" style="display:none">
+        <div class="evptitle">Link chia sẻ (gồm bố cục + góc nhìn hiện tại)</div>
+        <input id="evLink" readonly>
+        <div class="row"><button id="evLinkCopy">Sao chép link</button><button id="evNative" style="display:none">Gửi qua ứng dụng…</button><button id="evShareClose">Đóng</button></div>
+        <div id="evQR"></div>
+        <div class="evhint" id="evShareNote">Người nhận mở link sẽ thấy đúng bố cục này. Gửi qua Zalo, Messenger, email đều được; mã QR để in hoặc chiếu lên màn hình.</div>
+      </div>
     </div>`;
   document.body.appendChild(panel);
   const $ = id => panel.querySelector('#' + id);
@@ -204,12 +229,61 @@ export function initEvents({ THREE, scene, camera, controls, renderer, CSS2DObje
     if (Date.now() - clearArm > 3000) { clearArm = Date.now(); $('evClear').textContent = 'Bấm lần nữa để xóa'; setTimeout(() => $('evClear').textContent = 'Xóa hết', 3000); return; }
     items.slice().forEach(g => layer.remove(g)); items.length = 0; select(null); changed(); $('evClear').textContent = 'Xóa hết';
   };
-  $('evCopy').onclick = async () => {
-    try { await navigator.clipboard.writeText(serialize()); flash($('evCopy'), 'Đã sao chép ✓'); }
-    catch { $('evPasteBox').style.display = 'block'; $('evTa').value = serialize(); $('evTa').select(); }
+  // ---------- chia sẻ ----------
+  function sharePayload() {
+    const c = camera.position, t = controls.target, r = v => +v.toFixed(1);
+    return { v: 1, items: JSON.parse(serialize()), cam: [r(c.x), r(c.y), r(c.z), r(t.x), r(t.y), r(t.z)] };
+  }
+  async function makeLink() { return SHARE_BASE + '#b=' + await encodeLayout(sharePayload()); }
+  $('evShareBtn').onclick = async () => {
+    const box = $('evShare'); box.style.display = 'block'; $('evPasteBox').style.display = 'none';
+    const link = await makeLink();
+    $('evLink').value = link;
+    $('evShareNote').textContent = (items.length ? `${items.length} vật thể · ` : 'Bố cục đang trống · ') + 'Người nhận mở link sẽ thấy đúng bố cục và góc nhìn này. Gửi qua Zalo, Messenger, email đều được; mã QR để in hoặc chiếu lên màn hình.';
+    $('evNative').style.display = navigator.share ? '' : 'none';
+    drawQR(link);
+    box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   };
-  $('evPaste').onclick = () => { const b = $('evPasteBox'); b.style.display = b.style.display === 'none' ? 'block' : 'none'; };
-  $('evPasteOk').onclick = () => { try { load(JSON.parse($('evTa').value)); $('evPasteBox').style.display = 'none'; changed(); } catch { flash($('evPasteOk'), 'Mã không hợp lệ'); } };
+  $('evShareClose').onclick = () => { $('evShare').style.display = 'none'; };
+  $('evLink').onclick = () => $('evLink').select();
+  $('evLinkCopy').onclick = async () => {
+    try { await navigator.clipboard.writeText($('evLink').value); flash($('evLinkCopy'), 'Đã sao chép ✓'); }
+    catch { $('evLink').select(); flash($('evLinkCopy'), 'Nhấn Ctrl+C để chép'); }
+  };
+  $('evNative').onclick = async () => {
+    try { await navigator.share({ title: 'Bố trí sự kiện – Nhà Văn hóa Thanh niên BR-VT', url: $('evLink').value }); } catch { }
+  };
+  // mã QR (thư viện qrcode-generator tải khi cần)
+  let qrLib = null;
+  function loadQR() {
+    if (qrLib) return qrLib;
+    qrLib = new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js'; sc.onload = () => res(window.qrcode); sc.onerror = rej; document.head.appendChild(sc); });
+    return qrLib;
+  }
+  async function drawQR(link) {
+    const el = $('evQR'); el.innerHTML = '';
+    try {
+      const qrcode = await loadQR(); const qr = qrcode(0, 'L'); qr.addData(link); qr.make();
+      const n = qr.getModuleCount(), cell = Math.max(2, Math.floor(180 / n)), c = document.createElement('canvas');
+      c.width = c.height = (n + 4) * cell; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.fillStyle = '#111';
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (qr.isDark(y, x)) g.fillRect((x + 2) * cell, (y + 2) * cell, cell, cell);
+      el.appendChild(c);
+    } catch { el.innerHTML = '<div class="evhint">Bố cục quá lớn để tạo mã QR — hãy dùng link.</div>'; }
+  }
+  $('evPaste').onclick = () => { const b = $('evPasteBox'); b.style.display = b.style.display === 'none' ? 'block' : 'none'; $('evShare').style.display = 'none'; };
+  $('evPasteOk').onclick = async () => {
+    const txt = $('evTa').value.trim();
+    try {
+      const m = txt.match(/#b=([A-Za-z0-9_-]+)/);
+      if (m) applyShared(await decodeLayout(m[1]), false); else load(JSON.parse(txt));
+      $('evPasteBox').style.display = 'none'; changed();
+    } catch { flash($('evPasteOk'), 'Link/mã không hợp lệ'); }
+  };
+  function applyShared(data, fromUrl) {
+    load(data.items || []);
+    if (data.cam && data.cam.length === 6) { camera.position.set(data.cam[0], data.cam[1], data.cam[2]); controls.target.set(data.cam[3], data.cam[4], data.cam[5]); controls.update(); }
+    document.querySelectorAll('#views button').forEach(b => b.classList.remove('on'));
+  }
   function flash(b, t) { const o = b.textContent; b.textContent = t; setTimeout(() => b.textContent = o, 1600); }
 
   // ---------- kéo thả ----------
@@ -260,8 +334,24 @@ export function initEvents({ THREE, scene, camera, controls, renderer, CSS2DObje
     $('evStats').innerHTML = items.length ? `<b>Tổng ${seats} ghế</b> · ${parts.join(' · ')}` : 'Chưa có vật thể nào.';
     try { localStorage.setItem(LS_KEY, serialize()); } catch { }
   }
+  let fromShare = false;
   try { const saved = localStorage.getItem(LS_KEY); if (saved) load(JSON.parse(saved)); } catch { }
-  changed();
-  window.__ev = { items, select, project(x, z) { const v = new THREE.Vector3(x, 0.5, z).project(camera); const r = renderer.domElement.getBoundingClientRect(); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; } };
+  const hm = location.hash.match(/^#b=([A-Za-z0-9_-]+)/);
+  if (hm) {
+    fromShare = true;
+    let mine = null; try { mine = localStorage.getItem(LS_KEY); } catch { }
+    decodeLayout(hm[1]).then(data => {
+      applyShared(data, true); changed();
+      try { history.replaceState(null, '', location.pathname + location.search); } catch { }
+      const bar = document.createElement('div'); bar.id = 'evBanner'; bar.className = 'panel';
+      bar.innerHTML = `📌 Đang xem bố cục được chia sẻ (${items.length} vật thể). <button id="evKeep" class="primary">Giữ bố cục này</button>` + (mine && mine !== '[]' ? ' <button id="evBack">Quay về bố cục của tôi</button>' : '');
+      document.body.appendChild(bar);
+      bar.querySelector('#evKeep').onclick = () => bar.remove();
+      const back = bar.querySelector('#evBack');
+      if (back) back.onclick = () => { load(JSON.parse(mine)); changed(); bar.remove(); };
+    }).catch(() => { changed(); });
+  }
+  if (!fromShare) changed();
+  window.__ev = { items, select, makeLink, project(x, z) { const v = new THREE.Vector3(x, 0.5, z).project(camera); const r = renderer.domElement.getBoundingClientRect(); return [r.left + (v.x + 1) / 2 * r.width, r.top + (1 - v.y) / 2 * r.height]; } };
   return { layer };
 }
