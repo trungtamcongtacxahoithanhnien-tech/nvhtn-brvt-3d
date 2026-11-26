@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mô hình 3D – Nhà Văn hóa Thanh niên Bà Rịa – Vũng Tàu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#eef1f4; --panel:rgba(255,255,255,.94); --ink:#1d2430; --muted:#5d6878; --accent:#1f8f8a; --red:#c8202a; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; overflow:hidden; font-family:'Be Vietnam Pro',system-ui,sans-serif; color:var(--ink); background:var(--bg); }
+  #app { position:fixed; inset:0; }
+  canvas { display:block; }
+  .panel { position:absolute; background:var(--panel); border-radius:12px; box-shadow:0 4px 18px rgba(20,30,50,.14); backdrop-filter:blur(6px); }
+  #top { top:12px; left:12px; padding:12px 14px; max-width:340px; }
+  #top h1 { font-size:15px; margin:0 0 2px; line-height:1.3; }
+  #top p { margin:0; font-size:12px; color:var(--muted); }
+  .row { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  button { font:inherit; font-size:12px; border:1px solid #d3d9e1; background:#fff; color:var(--ink); padding:6px 10px; border-radius:8px; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  #legend { right:12px; top:12px; width:250px; padding:10px 12px; max-height:calc(100% - 24px); overflow:auto; }
+  #legend h2 { font-size:13px; margin:2px 0 8px; }
+  #legend ol { margin:0; padding:0; list-style:none; }
+  #legend li { display:flex; gap:8px; align-items:flex-start; font-size:12px; padding:5px 4px; border-radius:6px; cursor:pointer; }
+  #legend li:hover { background:#eef6f5; }
+  .num { flex:none; width:20px; height:20px; border-radius:50%; background:var(--red); color:#fff; font-size:11px; font-weight:700; display:grid; place-items:center; }
+  #measureInfo { left:50%; bottom:14px; transform:translateX(-50%); padding:8px 14px; font-size:13px; display:none; }
+  #note { left:12px; bottom:12px; padding:8px 12px; font-size:11px; color:var(--muted); max-width:360px; }
+  .lbl { pointer-events:auto; cursor:pointer; display:flex; align-items:center; gap:5px; background:rgba(255,255,255,.95); border:1px solid rgba(0,0,0,.08); padding:3px 8px 3px 3px; border-radius:20px; font-size:11.5px; font-weight:600; white-space:nowrap; box-shadow:0 2px 6px rgba(0,0,0,.15); }
+  .lbl.pin { padding:0; background:none; border:none; box-shadow:none; }
+  .lbl.pin .num { width:24px; height:24px; font-size:12px; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.3); }
+  .lbl.ctx { background:rgba(40,48,60,.72); color:#fff; padding:3px 8px; font-weight:400; }
+  .mlbl { background:#1d2430; color:#fff; padding:3px 7px; border-radius:6px; font-size:12px; font-weight:700; }
+  #sunPanel { left:50%; transform:translateX(-50%); bottom:12px; width:min(520px, calc(100% - 24px)); padding:10px 14px; }
+  .sunhead { display:flex; align-items:center; gap:8px; font-size:13px; }
+  .sunhead b { margin-right:auto; }
+  .sunhead input { font:inherit; font-size:12px; border:1px solid #d3d9e1; border-radius:8px; padding:4px 6px; }
+  .sunrow { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--muted); margin-top:6px; }
+  .sunrow input { flex:1; accent-color:#f0a020; }
+  #sunText { font-size:12px; margin-top:4px; line-height:1.5; }
+  #sunText .big { font-size:16px; font-weight:700; }
+  #measureInfo { bottom:130px !important; }
+  #evPanel { left:12px; top:250px; width:340px; padding:10px 12px; max-height:calc(100% - 370px); overflow:auto; }
+  .evhead { display:flex; justify-content:space-between; align-items:center; font-size:13px; }
+  .evhead button { padding:2px 9px; }
+  .evgrid { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:8px; }
+  .evgrid button { text-align:left; padding:6px 8px; font-size:11.5px; }
+  #evStats { font-size:12px; margin-top:8px; line-height:1.5; }
+  .evhint { font-size:11px; color:var(--muted); margin-top:6px; }
+  #evPasteBox textarea { width:100%; height:60px; margin-top:6px; font-size:11px; }
+  .evlbl { background:#ff8a00; color:#fff; font-size:11.5px; font-weight:600; padding:3px 8px; border-radius:6px; white-space:nowrap; }
+  @media (max-height: 820px) { #note { display:none; } #evPanel { max-height:calc(100% - 290px); } }
+  .hide-labels .lbl { display:none; }
+  .hide-ctx .lbl.ctx { display:none; }
+  @media (max-width: 1100px) { #note { display:none; } }
+  @media (max-width: 720px) {
+    #legend { top:auto; bottom:150px; right:12px; left:12px; width:auto; max-height:22%; }
+    #note { display:none; }
+    #top { right:12px; max-width:none; }
+    #evPanel { top:auto; bottom:calc(22% + 170px); right:12px; width:auto; max-height:25%; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="top" class="panel">
+  <h1>Nhà Văn hóa Thanh niên Bà Rịa – Vũng Tàu</h1>
+  <p>160 Hạ Long, Vũng Tàu · mô hình minh họa mặt bằng sự kiện</p>
+  <div class="row" id="views">
+    <button data-view="overview" class="on">Tổng thể</button>
+    <button data-view="gate">Từ cổng</button>
+    <button data-view="plan">Mặt bằng</button>
+    <button data-view="ground">Tầng trệt trống</button>
+    <button data-view="food">Khu ẩm thực</button>
+  </div>
+  <div class="row">
+    <button id="tLabels" class="on">Nhãn khu vực</button>
+    <button id="tCtx" class="on">Nhà xung quanh</button>
+    <button id="tGrid">Lưới 5 m</button>
+    <button id="tMeasure">📏 Đo khoảng cách</button>
+  </div>
+</div>
+
+<div id="sunPanel" class="panel">
+  <div class="sunhead">
+    <b>☀️ Hướng nắng</b>
+    <input type="date" id="sunDate">
+    <button id="sunPlay">▶ Chạy</button>
+  </div>
+  <div class="sunrow">
+    <span>05:30</span>
+    <input type="range" id="sunTime" min="330" max="1110" step="5" value="900">
+    <span>18:30</span>
+  </div>
+  <div id="sunText"></div>
+</div>
+
+<div id="legend" class="panel">
+  <h2>Khu vực (bấm để xem)</h2>
+  <ol id="zones"></ol>
+</div>
+
+<div id="measureInfo" class="panel">Bấm 2 điểm trên mặt sân để đo · <span id="mval"></span> <button id="mclear" style="margin-left:8px">Xóa</button></div>
+<div id="note" class="panel">Mặt bằng đo trên ảnh vệ tinh Google Maps (tỉ lệ 0,147 m/px, sai số ~1–2 m); chiều cao ước theo số tầng. Dùng để hình dung bố trí, không thay bản vẽ kỹ thuật. Kéo để xoay · cuộn để phóng to · chuột phải để di chuyển. <a id="glbLink" href="NhaVanHoaThanhNien_BRVT.glb" download style="display:none">⬇ Tải file 3D (.glb)</a></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { buildScene, FACADE_AZ } from './scene.js';
+import { initEvents } from './events.js';
+
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+app.appendChild(renderer.domElement);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(innerWidth, innerHeight);
+Object.assign(labelRenderer.domElement.style, { position: 'absolute', top: 0, left: 0, pointerEvents: 'none' });
+app.appendChild(labelRenderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xbcd8f0);
+scene.fog = new THREE.Fog(0xbcd8f0, 260, 520);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.5, 2000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI / 2 - 0.03; controls.maxDistance = 450; controls.minDistance = 4;
+
+scene.add(new THREE.HemisphereLight(0xdbeaff, 0x8a8370, 1.1));
+const sun = new THREE.DirectionalLight(0xfff3df, 2.4);
+sun.position.set(70, 120, 90);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+Object.assign(sun.shadow.camera, { left: -120, right: 120, top: 120, bottom: -120, near: 10, far: 480 });
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.05;
+scene.add(sun);
+
+// chữ trên mặt tiền / biển hiệu
+function textTexture(text, w, h, style = {}) {
+  const pxPerM = 64, c = document.createElement('canvas');
+  c.width = Math.round(w * pxPerM); c.height = Math.round(h * pxPerM);
+  const g = c.getContext('2d');
+  if (style.bg) { g.fillStyle = style.bg; g.fillRect(0, 0, c.width, c.height); }
+  const lines = text.split('\n');
+  const fs = Math.min(c.height / lines.length * 0.68, c.width / (Math.max(...lines.map(l => l.length)) * 0.58));
+  g.font = `700 ${fs}px "Be Vietnam Pro", Arial, sans-serif`;
+  g.fillStyle = style.color || '#222'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  lines.forEach((l, i) => g.fillText(l, c.width / 2, c.height * (i + 0.5) / lines.length));
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+}
+
+await document.fonts.ready.catch(() => {});
+const { root, labels, context } = buildScene(THREE, { textTexture });
+scene.add(root);
+
+// nhãn
+const zonesEl = document.getElementById('zones');
+let zi = 0;
+labels.forEach(l => {
+  const div = document.createElement('div');
+  const isZone = l.kind === 'zone';
+  div.className = 'lbl' + (isZone ? '' : ' ctx');
+  if (isZone) {
+    zi++;
+    div.className = 'lbl pin';
+    div.innerHTML = `<span class="num">${zi}</span>`;
+    div.title = l.text;
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="num">${zi}</span><span>${l.text}</span>`;
+    li.onclick = () => focusOn(l.pos);
+    zonesEl.appendChild(li);
+    div.onclick = () => focusOn(l.pos);
+  } else div.textContent = l.text;
+  const o = new CSS2DObject(div); o.position.set(...l.pos);
+  if (!isZone) o.userData.ctx = true;
+  scene.add(o);
+});
+
+// lưới 5 m
+const grid = new THREE.GridHelper(200, 40, 0x335577, 0x335577);
+grid.material.opacity = 0.35; grid.material.transparent = true; grid.position.set(-37, 0.12, 4); grid.visible = false;
+scene.add(grid);
+
+// ---------- MÔ PHỎNG NẮNG (vị trí mặt trời thực tại Vũng Tàu) ----------
+const LAT = 10.3413, LON = 107.0747, TZ = 7;
+const rad = Math.PI / 180;
+function sunPosition(date) {
+  const d = date.getTime() / 86400000 + 2440587.5 - 2451545.0;
+  const g = (357.529 + 0.98560028 * d) * rad;
+  const q = 280.459 + 0.98564736 * d;
+  const L = (q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * rad;
+  const e = (23.439 - 0.00000036 * d) * rad;
+  const ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L));
+  const dec = Math.asin(Math.sin(e) * Math.sin(L));
+  const gmst = ((18.697374558 + 24.06570982441908 * d) % 24 + 24) % 24;
+  const H = (gmst * 15 + LON) * rad - ra;
+  const la = LAT * rad;
+  const elev = Math.asin(Math.sin(la) * Math.sin(dec) + Math.cos(la) * Math.cos(dec) * Math.cos(H));
+  let az = Math.atan2(-Math.sin(H), Math.tan(dec) * Math.cos(la) - Math.sin(la) * Math.cos(H)) / rad;
+  return { elev: elev / rad, az: (az + 360) % 360 };
+}
+// phương vị (độ, từ Bắc theo chiều kim đồng hồ) → vector trong mô hình
+function azToVec(az) {
+  const a = (az - FACADE_AZ) * rad;
+  return new THREE.Vector3(-Math.sin(a), 0, Math.cos(a));
+}
+const HUONG = ['Bắc', 'Đông Bắc', 'Đông', 'Đông Nam', 'Nam', 'Tây Nam', 'Tây', 'Tây Bắc'];
+const huong = az => HUONG[Math.round(az / 45) % 8];
+const FACES = [ // các mặt khối nhà chính
+  { name: 'mặt tiền (nhìn ra sân)', az: FACADE_AZ },
+  { name: 'mặt hông trái (phía khối tròn)', az: (FACADE_AZ + 90) % 360 },
+  { name: 'mặt sau', az: (FACADE_AZ + 180) % 360 },
+  { name: 'mặt hông phải (phía mái che xe)', az: (FACADE_AZ + 270) % 360 },
+];
+const sunDate = document.getElementById('sunDate'), sunTime = document.getElementById('sunTime'), sunText = document.getElementById('sunText');
+const nowVN = new Date(Date.now() + TZ * 3600000);
+sunDate.value = nowVN.toISOString().slice(0, 10);
+const curMin = nowVN.getUTCHours() * 60 + nowVN.getUTCMinutes();
+sunTime.value = curMin >= 330 && curMin <= 1110 ? curMin : 900;
+const sky = new THREE.Color(), skyDay = new THREE.Color(0xbcd8f0), skyLow = new THREE.Color(0xf3c08e), skyNight = new THREE.Color(0x1d2738);
+const hemi = scene.children.find(o => o.isHemisphereLight);
+function updateSun() {
+  const [y, m, dd] = sunDate.value.split('-').map(Number);
+  const min = +sunTime.value;
+  const date = new Date(Date.UTC(y, m - 1, dd, 0, min) - TZ * 3600000);
+  const { elev, az } = sunPosition(date);
+  const v = azToVec(az), e = Math.max(elev, -2) * rad;
+  sun.position.set(v.x * Math.cos(e) * 240, Math.sin(e) * 240, v.z * Math.cos(e) * 240).add(new THREE.Vector3(-37, 0, 4));
+  sun.target.position.set(-37, 0, 4); sun.target.updateMatrixWorld();
+  const up = Math.max(0, Math.min(1, elev / 25));
+  sun.intensity = elev > 0 ? 0.6 + 2.0 * up : 0;
+  sun.color.setHSL(0.09, 1, 0.75 + 0.2 * up);
+  hemi.intensity = elev > 0 ? 0.55 + 0.6 * up : 0.3;
+  if (elev > 0) sky.copy(skyLow).lerp(skyDay, up); else sky.copy(skyLow).lerp(skyNight, Math.min(1, -elev / 6));
+  scene.background.copy(sky); scene.fog.color.copy(sky);
+  const hh = String(Math.floor(min / 60)).padStart(2, '0'), mm = String(min % 60).padStart(2, '0');
+  if (elev <= 0) { sunText.innerHTML = `<span class="big">${hh}:${mm}</span> · Mặt trời đã lặn / chưa mọc`; return; }
+  const lit = FACES.filter(f => Math.cos((az - f.az) * rad) > 0.05).map(f => f.name);
+  const shadowLen = 21 / Math.tan(elev * rad); // khối nhà chính cao ~21 m (gồm tường mái)
+  const towardYard = shadowLen * Math.cos((az + 180 - FACADE_AZ) * rad);
+  const courtNear = 8.5, courtFar = 27.5; // mép sân bóng rổ (gồm viền cam) tính từ mặt tiền
+  const yardTxt = towardYard > 1
+    ? `Bóng khối nhà chính đổ ra sân trước khoảng <b>${Math.min(towardYard, 99).toFixed(0)} m</b> tính từ mặt tiền${towardYard > courtNear ? ' (phủ ' + (towardYard >= courtFar ? 'hết' : 'một phần') + ' sân bóng rổ)' : ''}.`
+    : `Sân trước <b>nắng trực tiếp</b>, bóng nhà đổ về phía sau.`;
+  sunText.innerHTML = `<span class="big">${hh}:${mm}</span> · nắng từ hướng <b>${huong(az)}</b> (phương vị ${az.toFixed(0)}°), cao <b>${elev.toFixed(0)}°</b><br>` +
+    `Đang nhận nắng: ${lit.join(', ') || '—'}.<br>${yardTxt}`;
+}
+sunDate.oninput = updateSun; sunTime.oninput = updateSun;
+let playing = false, lastStep = 0;
+const playBtn = document.getElementById('sunPlay');
+playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? '❚❚ Dừng' : '▶ Chạy'; playBtn.classList.toggle('on', playing); };
+scene.add(sun.target);
+updateSun();
+
+// góc nhìn
+const VIEWS = {
+  overview: { pos: [60, 80, 115], target: [-30, 4, 2] },
+  gate: { pos: [-5.5, 3.5, 62], target: [-5.5, 9, 0] },
+  plan: { pos: [-37, 190, 4.01], target: [-37, 0, 4] },
+  ground: { pos: [-16, 3.2, 14], target: [-52, 2.5, -6] },
+  food: { pos: [-30, 22, 64], target: [-48, 3, 22] },
+};
+let anim = null;
+function flyTo(pos, target, ms = 1100) {
+  anim = { t0: performance.now(), ms, p0: camera.position.clone(), p1: new THREE.Vector3(...pos), q0: controls.target.clone(), q1: new THREE.Vector3(...target) };
+}
+function focusOn(p) {
+  const t = new THREE.Vector3(...p); t.y = Math.max(0, t.y - 3);
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  flyTo(t.clone().add(dir.multiplyScalar(55)).toArray(), t.toArray());
+}
+function setView(name, instant) {
+  const v = VIEWS[name];
+  document.querySelectorAll('#views button').forEach(b => b.classList.toggle('on', b.dataset.view === name));
+  if (instant) { camera.position.set(...v.pos); controls.target.set(...v.target); controls.update(); }
+  else flyTo(v.pos, v.target);
+}
+document.querySelectorAll('#views button').forEach(b => b.onclick = () => setView(b.dataset.view));
+setView('overview', true);
+
+// bật/tắt
+const tog = (id, fn) => { const b = document.getElementById(id); b.onclick = () => { b.classList.toggle('on'); fn(b.classList.contains('on')); }; };
+tog('tLabels', on => document.body.classList.toggle('hide-labels', !on));
+tog('tCtx', on => { context.visible = on; document.body.classList.toggle('hide-ctx', !on); });
+tog('tGrid', on => grid.visible = on);
+
+// đo khoảng cách
+let measuring = false, pts = [], mGroup = new THREE.Group(); scene.add(mGroup);
+const mInfo = document.getElementById('measureInfo'), mval = document.getElementById('mval');
+tog('tMeasure', on => { measuring = on; mInfo.style.display = on ? 'block' : 'none'; if (!on) clearMeasure(); });
+document.getElementById('mclear').onclick = clearMeasure;
+function clearMeasure() { pts = []; mGroup.children.slice().forEach(c => { mGroup.remove(c); if (c.element) c.element.remove(); }); mval.textContent = ''; }
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.15);
+let down = null;
+renderer.domElement.addEventListener('pointerdown', e => down = [e.clientX, e.clientY]);
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!measuring || !down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
+  ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const p = new THREE.Vector3(); if (!ray.ray.intersectPlane(plane, p)) return;
+  if (pts.length === 2) clearMeasure();
+  pts.push(p);
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 12), new THREE.MeshBasicMaterial({ color: 0xc8202a }));
+  dot.position.copy(p); mGroup.add(dot);
+  if (pts.length === 2) {
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xc8202a }));
+    mGroup.add(line);
+    const d = pts[0].distanceTo(pts[1]);
+    const div = document.createElement('div'); div.className = 'mlbl'; div.textContent = `≈ ${d.toFixed(1)} m`;
+    const o = new CSS2DObject(div); o.position.copy(pts[0]).lerp(pts[1], 0.5).setY(2); mGroup.add(o);
+    mval.textContent = `Khoảng cách ≈ ${d.toFixed(1)} m`;
+  } else mval.textContent = 'Chọn điểm thứ 2…';
+});
+
+initEvents({ THREE, scene, camera, controls, renderer, CSS2DObject, host: app, isBusy: () => measuring });
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight); labelRenderer.setSize(innerWidth, innerHeight);
+});
+
+const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+renderer.setAnimationLoop(now => {
+  if (anim) {
+    const k = Math.min(1, (now - anim.t0) / anim.ms), e = ease(k);
+    camera.position.lerpVectors(anim.p0, anim.p1, e); controls.target.lerpVectors(anim.q0, anim.q1, e);
+    if (k >= 1) anim = null;
+  }
+  if (playing && now - lastStep > 70) {
+    lastStep = now;
+    let t = +sunTime.value + 5; if (t > 1110) t = 330;
+    sunTime.value = t; updateSun();
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+});
+if (/github\.io$/.test(location.hostname)) document.getElementById('glbLink').style.display = 'inline';
+window.__ready = true;
+</script>
+</body>
+</html>
