@@ -15,3 +15,9 @@ Mặt bằng đo trên ảnh vệ tinh Google Maps (tỉ lệ 0,147 m/px, sai s�
 
 ## Chạy
 Mở `index.html` qua một web server (ví dụ GitHub Pages) — trang dùng three.js từ CDN jsDelivr.
+
+## Game "Hành trình Thành phố tôi yêu"
+Game kiểu Pokémon GO chơi tại khuôn viên Nhà Văn hóa: đi đến 9 điểm (GPS hoặc quét QR) để thu thập dấu ấn các địa danh của TP.HCM mới, trả lời câu hỏi, đổi quà, bảng xếp hạng Google Sheet.
+- Chơi: https://trungtamcongtacxahoithanhnien-tech.github.io/nvhtn-brvt-3d/game/
+- In mã QR: https://trungtamcongtacxahoithanhnien-tech.github.io/nvhtn-brvt-3d/game/qr.html
+- Hướng dẫn tổ chức: [game/HUONG-DAN.md](game/HUONG-DAN.md)
