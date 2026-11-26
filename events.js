@@ -21,7 +21,10 @@ async function decodeLayout(str) {
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
-export function initEvents({ THREE, scene, camera, controls, renderer, CSS2DObject, host, isBusy }) {
+const OPT = [['rail', 'Lan can sân bóng rổ'], ['hoops', 'Trụ bóng rổ'], ['carts', 'Xe đẩy ẩm thực'], ['motos', 'Xe máy'], ['cars', 'Ô tô'], ['trees', 'Cây xanh']];
+const LS_HIDE = 'nvhtn-brvt-hidden-v1';
+
+export function initEvents({ THREE, scene, camera, controls, renderer, CSS2DObject, host, isBusy, optional = {} }) {
   const M = (c, e = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, ...e });
   const mat = {
     stage: M(0x2b2d33), skirt: M(0x111214), led: M(0x1b3d8f, { emissive: 0x0d2a7a, emissiveIntensity: 0.6 }),
@@ -79,7 +82,7 @@ export function initEvents({ THREE, scene, camera, controls, renderer, CSS2DObje
       add(g, B(2, 0.7, 0.02), mat.cloth, 0, 0.4, 0.4);
       [[-0.9, -0.3], [0.9, -0.3], [-0.9, 0.3], [0.9, 0.3]].forEach(([x, z]) => add(g, B(0.04, 0.75, 0.04), mat.leg, x, 0.375, z));
     } },
-    carpet: { name: 'Thảm đỏ', label: p => `Thảm đỏ ${fm(p.w)}×${fm(p.d)} m`, params: { w: ['Rộng', 2, 1, 6], d: ['Dài', 12, 2, 40] }, build(g, p) { add(g, B(p.w, 0.03, p.d), mat.carpet, 0, 0.015, 0); } },
+    carpet: { name: 'Thảm đỏ', label: p => `Thảm đỏ ${fm(p.w)}×${fm(p.d)} m`, params: { w: ['Rộng', 2, 1, 6], d: ['Dài', 12, 2, 40] }, build(g, p) { add(g, B(p.w, 0.03, p.d), mat.carpet, 0, 0.115, 0); } },
     barrier: { name: 'Hàng rào 2 m', w: 2, d: 0.4, build(g) {
       add(g, B(2, 0.06, 0.06), mat.fence, 0, 1, 0); add(g, B(2, 0.06, 0.06), mat.fence, 0, 0.5, 0);
       [-0.95, 0.95].forEach(x => add(g, B(0.06, 1.05, 0.4), mat.leg, x, 0.52, 0));
@@ -180,6 +183,8 @@ export function initEvents({ THREE, scene, camera, controls, renderer, CSS2DObje
         <button id="evSnap" class="on">Bắt lưới 0,5 m</button>
         <button id="evShareBtn" class="primary">🔗 Chia sẻ bố cục</button><button id="evPaste">Mở link/mã</button><button id="evClear">Xóa hết</button>
       </div>
+      <div class="evsub">Vật dụng có sẵn <span>(bấm để ẩn/hiện)</span></div>
+      <div class="evopt">${OPT.map(([k, n]) => `<button data-opt="${k}" class="on">✓ ${n}</button>`).join('')}</div>
       <div id="evStats"></div>
       <div class="evhint">Bấm nút để thêm vào giữa màn hình · kéo vật thể để di chuyển · bấm chọn rồi xoay/nhân bản/xóa</div>
       <div id="evPasteBox" style="display:none"><textarea id="evTa" placeholder="Dán link chia sẻ hoặc mã bố cục vào đây"></textarea><button id="evPasteOk">Mở bố cục</button></div>
@@ -230,10 +235,27 @@ export function initEvents({ THREE, scene, camera, controls, renderer, CSS2DObje
     if (Date.now() - clearArm > 3000) { clearArm = Date.now(); $('evClear').textContent = 'Bấm lần nữa để xóa'; setTimeout(() => $('evClear').textContent = 'Xóa hết', 3000); return; }
     items.slice().forEach(g => layer.remove(g)); items.length = 0; select(null); changed(); $('evClear').textContent = 'Xóa hết';
   };
+  // ---------- ẩn/hiện vật dụng có sẵn ----------
+  let hidden = new Set();
+  function applyHidden() {
+    OPT.forEach(([k, n]) => {
+      const on = !hidden.has(k);
+      if (optional[k]) optional[k].visible = on;
+      const b = panel.querySelector(`[data-opt="${k}"]`);
+      b.classList.toggle('on', on); b.textContent = (on ? '✓ ' : '✕ ') + n;
+    });
+    try { localStorage.setItem(LS_HIDE, JSON.stringify([...hidden])); } catch { }
+  }
+  panel.querySelectorAll('[data-opt]').forEach(b => b.onclick = () => {
+    const k = b.dataset.opt; hidden.has(k) ? hidden.delete(k) : hidden.add(k); applyHidden();
+  });
+  try { hidden = new Set(JSON.parse(localStorage.getItem(LS_HIDE) || '[]')); } catch { }
+  applyHidden();
+
   // ---------- chia sẻ ----------
   function sharePayload() {
     const c = camera.position, t = controls.target, r = v => +v.toFixed(1);
-    return { v: 1, items: JSON.parse(serialize()), cam: [r(c.x), r(c.y), r(c.z), r(t.x), r(t.y), r(t.z)] };
+    return { v: 1, items: JSON.parse(serialize()), cam: [r(c.x), r(c.y), r(c.z), r(t.x), r(t.y), r(t.z)], hide: [...hidden] };
   }
   async function makeLink() { return SHARE_BASE + '#b=' + await encodeLayout(sharePayload()); }
   $('evShareBtn').onclick = async () => {
@@ -282,6 +304,7 @@ export function initEvents({ THREE, scene, camera, controls, renderer, CSS2DObje
   };
   function applyShared(data, fromUrl) {
     load(data.items || []);
+    if (Array.isArray(data.hide)) { hidden = new Set(data.hide); applyHidden(); }
     if (data.cam && data.cam.length === 6) { camera.position.set(data.cam[0], data.cam[1], data.cam[2]); controls.target.set(data.cam[3], data.cam[4], data.cam[5]); controls.update(); }
     document.querySelectorAll('#views button').forEach(b => b.classList.remove('on'));
   }

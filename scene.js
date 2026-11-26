@@ -64,6 +64,8 @@ export function buildScene(THREE, opts = {}) {
   }
   function group(name, parent = root) { const g = new THREE.Group(); g.name = name; parent.add(g); return g; }
   const label = (text, x, y, z, kind = 'zone') => labels.push({ text, pos: [x, y, z], kind });
+  // các nhóm vật dụng nhỏ có thể ẩn/hiện khi bố trí sự kiện
+  const optional = {};
 
   // ---------- NỀN, RANH ĐẤT, ĐƯỜNG ----------
   const site = group('Nen_va_duong');
@@ -203,8 +205,9 @@ export function buildScene(THREE, opts = {}) {
   bmm(food, -50, -36, 6.4, 8.2, HZ1 + 0.13, HZ1 + 0.25, mat.blue, 'Bang_Ben_do');
   textPlane(food, 'YOUTH HAVEN · BẾN ĐỖ THANH NIÊN', 13.5, 1.7, -43, 7.3, HZ1 + 0.27, 0, { color: '#ffffff', bg: '#1d3fa8' });
   const cartCols = [mat.red, mat.beige, mat.blue, mat.chairY, mat.courtOrange, mat.white];
+  const carts = group('Xe_day_am_thuc', food); optional.carts = carts;
   function cart(x, z, i, rot = 0) {
-    const c = new THREE.Group(); c.position.set(x, 0, z); c.rotation.y = rot; food.add(c);
+    const c = new THREE.Group(); c.position.set(x, 0, z); c.rotation.y = rot; carts.add(c);
     box(c, 3.2, 1.1, 1.6, cartCols[i % cartCols.length], 0, 0.4, 0);
     box(c, 3.0, 0.9, 1.4, mat.white, 0, 1.5, 0);
     box(c, 3.3, 0.08, 1.8, mat.redDark, 0, 2.4, 0);
@@ -236,19 +239,21 @@ export function buildScene(THREE, opts = {}) {
     const arc = new THREE.Mesh(new THREE.RingGeometry(6.7, 6.78, 48, 1, -Math.PI / 2, Math.PI), mat.line);
     arc.rotation.x = -Math.PI / 2; arc.rotation.z = sg > 0 ? Math.PI : 0; arc.position.set(CX + sg * (CW / 2 - 1.6), 0.08, CZ); court.add(arc);
   });
+  const rail = group('Lan_can_san_bong_ro', court); optional.rail = rail;
+  const hoops = group('Tru_bong_ro', court); optional.hoops = hoops;
   const RX0 = CX - CW / 2 - 2.5, RX1 = CX + CW / 2 + 2.5, RZ0 = CZ - CD / 2 - 2.5, RZ1 = CZ + CD / 2 + 2.5;
   [[RX0, RX1, RZ0, RZ0], [RX0, RX1, RZ1, RZ1], [RX0, RX0, RZ0, RZ1], [RX1, RX1, RZ0, RZ1]].forEach(([a, b, c, d]) => {
-    bmm(court, Math.min(a, b) - 0.06, Math.max(a, b) + 0.06, 0.55, 0.65, Math.min(c, d) - 0.06, Math.max(c, d) + 0.06, mat.yellow, 'Lan_can');
+    bmm(rail, Math.min(a, b) - 0.06, Math.max(a, b) + 0.06, 0.55, 0.65, Math.min(c, d) - 0.06, Math.max(c, d) + 0.06, mat.yellow, 'Lan_can');
     const len = Math.max(b - a, d - c);
-    for (let t = 0; t <= len; t += 3) box(court, 0.1, 0.6, 0.1, mat.yellow, a === b ? a : a + t, 0, c === d ? c : c + t);
+    for (let t = 0; t <= len; t += 3) box(rail, 0.1, 0.6, 0.1, mat.yellow, a === b ? a : a + t, 0, c === d ? c : c + t);
   });
   [-1, 1].forEach(sg => {
     const bx = CX + sg * (CW / 2 + 1.6);
-    bmm(court, bx - 0.8, bx + 0.8, 0, 0.6, CZ - 1, CZ + 1, mat.black);
-    const p = box(court, 0.2, 3.6, 0.2, mat.black, bx, 0.6, CZ); p.rotation.z = sg * 0.35;
-    bmm(court, bx - sg * 1.4 - 0.05, bx - sg * 1.4 + 0.05, 3.0, 4.1, CZ - 0.9, CZ + 0.9, mat.ctxGlass, 'Bang_ro');
+    bmm(hoops, bx - 0.8, bx + 0.8, 0, 0.6, CZ - 1, CZ + 1, mat.black);
+    const p = box(hoops, 0.2, 3.6, 0.2, mat.black, bx, 0.6, CZ); p.rotation.z = sg * 0.35;
+    bmm(hoops, bx - sg * 1.4 - 0.05, bx - sg * 1.4 + 0.05, 3.0, 4.1, CZ - 0.9, CZ + 0.9, mat.ctxGlass, 'Bang_ro');
     const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.02, 6, 20), mat.courtOrange);
-    hoop.rotation.x = Math.PI / 2; hoop.position.set(bx - sg * 1.7, 3.05, CZ); court.add(hoop);
+    hoop.rotation.x = Math.PI / 2; hoop.position.set(bx - sg * 1.7, 3.05, CZ); hoops.add(hoop);
   });
   label('Sân bóng rổ 28×15 m', CX, 3, CZ);
   label('Sân trung tâm · ~45×37 m', 8, 2, 32);
@@ -257,15 +262,17 @@ export function buildScene(THREE, opts = {}) {
   const park = group('Mai_che_giu_xe');
   bmm(park, 17, 24.3, 3.6, 3.8, -7, 26.5, mat.white, 'Mai_che');
   for (let z = -6.5; z <= 26; z += 5.5) { cyl(park, 0.1, 0.1, 3.6, mat.metal, 17.4, 0, z, 8); cyl(park, 0.1, 0.1, 3.6, mat.metal, 23.9, 0, z, 8); }
+  const cars = group('O_to', park); optional.cars = cars;
+  const motos = group('Xe_may', park); optional.motos = motos;
   const carCols = [0xf2f2f2, 0x222428, 0x9aa0a6, 0x1d2b4a, 0xdddddd];
   for (let i = 0; i < 5; i++) {
     const z = -5 + i * 5.2, m = M(carCols[i % 5], { metalness: 0.4, roughness: 0.4 });
-    bmm(park, 18.2, 22.9, 0.3, 1.2, z, z + 2.0, m); bmm(park, 19, 21.7, 1.2, 1.75, z + 0.15, z + 1.85, mat.glassDark);
+    bmm(cars, 18.2, 22.9, 0.3, 1.2, z, z + 2.0, m); bmm(cars, 19, 21.7, 1.2, 1.75, z + 0.15, z + 1.85, mat.glassDark);
   }
-  for (let i = 0; i < 10; i++) bmm(park, 18, 19.8, 0.2, 1.1, 18 + i * 0.85, 18.35 + i * 0.85, i % 2 ? mat.black : mat.redDark);
+  for (let i = 0; i < 10; i++) bmm(motos, 18, 19.8, 0.2, 1.1, 18 + i * 0.85, 18.35 + i * 0.85, i % 2 ? mat.black : mat.redDark);
   label('Mái che giữ xe', 20.6, 5.5, 10);
   // giữ xe máy cạnh cổng (phía Đông)
-  for (let i = 0; i < 12; i++) bmm(park, -27 + (i % 2) * 2.2, -25.2 + (i % 2) * 2.2, 0.2, 1.1, 26 + Math.floor(i / 2) * 1.0, 26.35 + Math.floor(i / 2) * 1.0, i % 3 ? mat.black : mat.redDark);
+  for (let i = 0; i < 12; i++) bmm(motos, -27 + (i % 2) * 2.2, -25.2 + (i % 2) * 2.2, 0.2, 1.1, 26 + Math.floor(i / 2) * 1.0, 26.35 + Math.floor(i / 2) * 1.0, i % 3 ? mat.black : mat.redDark);
   label('Giữ xe máy', -25, 3, 29);
 
   // ---------- CỔNG, KIOSK MIXUE, TƯỜNG RÀO ----------
@@ -300,7 +307,7 @@ export function buildScene(THREE, opts = {}) {
   });
 
   // ---------- CÂY XANH (vị trí tán cây theo ảnh vệ tinh) ----------
-  const trees = group('Cay_xanh');
+  const trees = group('Cay_xanh'); optional.trees = trees;
   function tree(x, z, s = 1, kind = 0) {
     cyl(trees, 0.25 * s, 0.35 * s, 3.2 * s, mat.trunk, x, 0, z, 8);
     const lm = kind ? mat.leaf2 : mat.leaf;
@@ -340,5 +347,5 @@ export function buildScene(THREE, opts = {}) {
   north.add(arrow);
   label('Bắc', 39, 3, 49, 'context');
 
-  return { root, labels, context: ctx };
+  return { root, labels, context: ctx, optional };
 }
