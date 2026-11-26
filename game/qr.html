@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>In mã QR – Hành trình Thành phố tôi yêu</title>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+  body { font-family:'Be Vietnam Pro',sans-serif; margin:0; background:#eef1f4; color:#16212b; }
+  .bar { padding:14px 18px; background:#fff; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .bar button { font:inherit; padding:9px 14px; border-radius:10px; border:none; background:#0f8f86; color:#fff; font-weight:600; cursor:pointer; }
+  .pages { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; padding:18px; }
+  .card { background:#fff; border-radius:14px; padding:18px; text-align:center; border:2px dashed #b9c4cc; break-inside:avoid; page-break-inside:avoid; }
+  .card .n { font-size:13px; color:#5f6b78; } .card h2 { margin:4px 0 2px; font-size:22px; } .card .spot { font-size:14px; margin-bottom:10px; }
+  .card canvas { width:220px; height:220px; image-rendering:pixelated; }
+  .card .hint { font-size:12.5px; color:#5f6b78; margin-top:8px; line-height:1.45; }
+  .card .ic { width:70px; height:62px; margin:0 auto; }
+  @media print { .bar { display:none; } body { background:#fff; } .pages { grid-template-columns:1fr 1fr; padding:0; gap:10mm; } .card { border-color:#999; } }
+</style>
+</head>
+<body>
+<div class="bar"><b>Mã QR dự phòng cho 9 điểm</b><span>In ra, dán tại đúng vị trí ghi trên thẻ. Người chơi quét mã khi GPS yếu.</span><button onclick="print()">🖨 In</button></div>
+<div class="pages" id="pages"></div>
+<script type="module">
+import { CONFIG, CHECKPOINTS } from './data.js?v=2';
+const box = document.getElementById('pages');
+CHECKPOINTS.forEach(cp => {
+  const url = `${CONFIG.GAME_URL}#cp=${cp.id}-${cp.key}`;
+  const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
+  const n = qr.getModuleCount(), cell = 8, c = document.createElement('canvas');
+  c.width = c.height = (n + 8) * cell; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.fillStyle = '#000';
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (qr.isDark(y, x)) g.fillRect((x + 4) * cell, (y + 4) * cell, cell, cell);
+  const d = document.createElement('div'); d.className = 'card';
+  d.innerHTML = `<div class="n">HÀNH TRÌNH THÀNH PHỐ TÔI YÊU · Điểm ${cp.id}/9</div><h2>Dấu ấn bí ẩn</h2><div class="spot">📍 Dán tại: <b>${cp.spot}</b></div>`;
+  d.appendChild(c);
+  d.insertAdjacentHTML('beforeend', `<div class="hint">Quét bằng Camera hoặc Zalo để thu thập dấu ấn tại điểm này.</div>`);
+  box.appendChild(d);
+});
+</script>
+</body>
+</html>

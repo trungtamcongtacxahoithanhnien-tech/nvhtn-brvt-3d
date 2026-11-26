@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0f6f6a">
+<title>Hành trình Thành phố tôi yêu – Nhà Văn hóa Thanh niên</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#16212b; --muted:#5f6b78; --accent:#0f8f86; --accent2:#0f6f6a; --red:#d2232a; --gold:#e0a100; --bg:#eef4f3; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; height:100%; font-family:'Be Vietnam Pro',system-ui,sans-serif; color:var(--ink); background:var(--bg); overflow:hidden; }
+  button { font:inherit; cursor:pointer; border:none; border-radius:12px; padding:12px 16px; font-weight:600; }
+  .btn { background:var(--accent); color:#fff; } .btn:disabled { opacity:.5; }
+  .btn2 { background:#fff; color:var(--ink); border:1px solid #d4dde0; }
+  .screen { position:fixed; inset:0; display:none; flex-direction:column; }
+  .screen.on { display:flex; }
+  /* ---------- màn hình bắt đầu ---------- */
+  #start { background:linear-gradient(160deg,#0f8f86 0%,#0a4f66 60%,#13284a 100%); color:#fff; overflow:auto; }
+  .start-in { margin:auto; width:min(440px,100%); padding:28px 22px 40px; }
+  .kicker { font-size:12px; letter-spacing:.12em; text-transform:uppercase; opacity:.8; }
+  .start-in h1 { font-size:30px; line-height:1.15; margin:8px 0 10px; font-weight:800; }
+  .start-in p { opacity:.9; font-size:14.5px; line-height:1.55; margin:0 0 18px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:20px; }
+  .chips span { background:rgba(255,255,255,.15); padding:4px 10px; border-radius:20px; font-size:12px; }
+  .field { display:block; margin-bottom:12px; font-size:13px; }
+  .field input { display:block; width:100%; margin-top:5px; padding:12px 14px; border-radius:12px; border:none; font:inherit; font-size:16px; }
+  .start-in .btn { width:100%; font-size:17px; padding:15px; background:#ffd400; color:#16212b; margin-top:6px; }
+  .note { font-size:12px; opacity:.75; margin-top:14px; line-height:1.5; }
+  /* ---------- bản đồ ---------- */
+  #play { background:var(--bg); }
+  .hud { display:flex; align-items:center; gap:10px; padding:10px 12px; background:#fff; box-shadow:0 2px 10px rgba(0,0,0,.06); z-index:2; }
+  .hud .who { flex:1; min-width:0; } .hud .who b { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:15px; }
+  .hud .who small { color:var(--muted); font-size:12px; }
+  .pill { background:#eef6f5; color:var(--accent2); border-radius:20px; padding:6px 10px; font-weight:700; font-size:13px; white-space:nowrap; }
+  .mapwrap { flex:1; position:relative; overflow:hidden; }
+  #map { width:100%; height:100%; display:block; touch-action:none; }
+  .status { position:absolute; left:10px; right:10px; top:10px; background:rgba(255,255,255,.95); border-radius:12px; padding:9px 12px; font-size:13px; box-shadow:0 2px 10px rgba(0,0,0,.1); line-height:1.45; }
+  .status b { color:var(--accent2); }
+  .zoomb { position:absolute; right:10px; bottom:10px; background:#fff; color:var(--ink); box-shadow:0 2px 10px rgba(0,0,0,.15); padding:10px 13px; font-size:13px; }
+  .test .zoomb { bottom:52px; }
+  .testbar { position:absolute; left:10px; right:10px; bottom:10px; background:#fff3cd; border:1px solid #f0c36d; border-radius:10px; padding:7px 10px; font-size:12px; display:none; }
+  .test .testbar { display:block; }
+  .dock { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; padding:8px 8px calc(8px + env(safe-area-inset-bottom)); background:#fff; box-shadow:0 -2px 10px rgba(0,0,0,.06); }
+  .dock button { background:#f4f7f8; color:var(--ink); padding:9px 4px; font-size:11.5px; display:flex; flex-direction:column; align-items:center; gap:3px; }
+  .dock button b { font-size:20px; line-height:1; font-weight:400; }
+  .dock button.hot { background:var(--accent); color:#fff; animation:pulse 1.2s infinite; }
+  @keyframes pulse { 50% { transform:scale(1.04); } }
+  /* ---------- cửa sổ ---------- */
+  .modal { position:fixed; inset:0; background:rgba(10,20,30,.55); display:none; align-items:flex-end; justify-content:center; z-index:10; }
+  .modal.on { display:flex; }
+  .sheet { background:#fff; width:min(520px,100%); max-height:92%; overflow:auto; border-radius:20px 20px 0 0; padding:18px 18px calc(18px + env(safe-area-inset-bottom)); }
+  .sheet h2 { margin:0 0 4px; font-size:20px; } .sheet .sub { color:var(--muted); font-size:13px; margin-bottom:12px; }
+  .x { float:right; background:#f1f3f5; padding:6px 11px; border-radius:20px; }
+  .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .card { border-radius:14px; padding:8px 6px 9px; text-align:center; background:#f4f6f8; border:2px solid transparent; font-size:11.5px; line-height:1.3; }
+  .card svg { width:100%; aspect-ratio:1; display:block; background:#fff; border-radius:10px; margin-bottom:5px; }
+  .card.lock svg { filter:grayscale(1) brightness(.35); opacity:.5; }
+  .card .pw { position:relative; margin-bottom:5px; } .card .pw img, .card .pw svg { width:100%; aspect-ratio:1; object-fit:cover; display:block; border-radius:10px; background:#fff; margin:0; }
+  .card.lock .pw img { filter:grayscale(1) blur(5px) brightness(.45); }
+  .card .qm { position:absolute; inset:0; display:grid; place-items:center; color:#fff; font-size:30px; font-weight:800; text-shadow:0 2px 6px rgba(0,0,0,.6); }
+  .credits { font-size:10.5px; color:var(--muted); margin-top:12px; line-height:1.55; } .credits a { color:var(--muted); }
+  .float .glow img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; border-radius:16px; }
+  .float .cr { margin-top:6px; font-size:10.5px; } .float .cr a, .float .cr { color:rgba(255,255,255,.92); text-shadow:0 1px 3px rgba(0,0,0,.7); }
+  .card .r { font-size:10px; font-weight:700; }
+  .lb { width:100%; border-collapse:collapse; font-size:14px; } .lb td { padding:8px 4px; border-bottom:1px solid #eef0f2; }
+  .lb td:first-child { width:34px; font-weight:800; color:var(--muted); } .lb .me { background:#fff8db; }
+  /* ---------- gặp dấu ấn (camera) ---------- */
+  #enc { position:fixed; inset:0; z-index:20; display:none; background:linear-gradient(180deg,#7cc3e8,#bfe6d0 70%,#e9dcc0); overflow:hidden; }
+  #enc.on { display:block; }
+  #encVideo { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .enc-top { position:absolute; top:0; left:0; right:0; padding:14px; display:flex; justify-content:space-between; align-items:center; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.5); z-index:2; }
+  .enc-top button { background:rgba(0,0,0,.45); color:#fff; padding:8px 12px; }
+  .float { position:absolute; left:50%; top:16%; width:min(74vw,320px); transform:translateX(-50%); animation:bob 2.4s ease-in-out infinite; z-index:1; text-align:center; }
+  .float .glow { background:#fff; border-radius:24px; padding:10px; box-shadow:0 0 0 6px rgba(255,255,255,.4), 0 0 40px 12px var(--rc,#fff); }
+  .float svg { width:100%; display:block; }
+  .float .nm { margin-top:10px; color:#fff; font-weight:800; font-size:20px; text-shadow:0 2px 6px rgba(0,0,0,.6); }
+  .float .rr { display:inline-block; margin-top:4px; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:700; color:#fff; }
+  @keyframes bob { 50% { transform:translate(-50%,-14px) rotate(1.5deg); } }
+  .float.caught { animation:catchAnim .7s forwards; }
+  @keyframes catchAnim { to { transform:translate(-50%,40vh) scale(.1); opacity:0; } }
+  .enc-bottom { position:absolute; left:0; right:0; bottom:0; background:#fff; border-radius:20px 20px 0 0; padding:16px 16px calc(16px + env(safe-area-inset-bottom)); z-index:3; }
+  .enc-bottom .q { font-weight:700; font-size:16px; margin-bottom:10px; line-height:1.4; }
+  .opts { display:grid; gap:8px; }
+  .opts button { background:#f1f5f6; color:var(--ink); text-align:left; padding:13px 14px; font-weight:600; border:2px solid transparent; }
+  .opts button.ok { background:#d8f5e6; border-color:#2f9e6e; } .opts button.bad { background:#fde2e2; border-color:#d2232a; }
+  .fact { font-size:13.5px; color:var(--muted); line-height:1.5; margin:4px 0 12px; }
+  .wide { width:100%; font-size:16px; padding:14px; }
+  /* ---------- đổi quà ---------- */
+  .reward { text-align:center; }
+  .code { font-size:38px; font-weight:800; letter-spacing:.12em; color:var(--accent2); margin:6px 0; }
+  .clock { font-size:13px; color:var(--muted); } .clock b { color:var(--red); font-variant-numeric:tabular-nums; }
+  .stamp { display:inline-block; border:4px solid var(--red); color:var(--red); font-weight:800; font-size:24px; padding:6px 16px; border-radius:10px; transform:rotate(-8deg); margin:10px 0; }
+  .pin { display:flex; gap:8px; margin-top:10px; } .pin button { flex:none; } .pin input { flex:1; min-width:0; padding:12px; border:1px solid #d4dde0; border-radius:12px; font:inherit; font-size:18px; text-align:center; letter-spacing:.3em; }
+  .confetti { position:fixed; inset:0; pointer-events:none; z-index:30; }
+  .toast { position:fixed; left:50%; bottom:90px; transform:translateX(-50%); background:#16212b; color:#fff; padding:10px 16px; border-radius:12px; font-size:14px; z-index:40; opacity:0; transition:.3s; pointer-events:none; max-width:90%; text-align:center; }
+  .toast.on { opacity:1; }
+  #scanVideo { width:100%; border-radius:14px; background:#000; aspect-ratio:3/4; object-fit:cover; }
+  ol.how { padding-left:18px; font-size:14px; line-height:1.6; margin:6px 0 0; }
+</style>
+</head>
+<body>
+
+<!-- MÀN HÌNH BẮT ĐẦU -->
+<section id="start" class="screen">
+  <div class="start-in">
+    <div class="kicker">Nhà Văn hóa Thanh niên · Vũng Tàu</div>
+    <h1>Hành trình<br>Thành phố tôi yêu</h1>
+    <p>Đi quanh khuôn viên Nhà Văn hóa để tìm và thu thập <b>9 dấu ấn</b> của TP.HCM mới — từ Sài Gòn, Bình Dương đến Vũng Tàu và Côn Đảo. Đến gần điểm nào, dấu ấn sẽ xuất hiện; trả lời đúng câu hỏi là thu thập được.</p>
+    <div class="chips"><span>📍 Dùng GPS</span><span>📷 Quét QR dự phòng</span><span>🏆 Bảng xếp hạng</span><span>🎁 Đổi quà</span></div>
+    <label class="field">Họ và tên *<input id="fName" autocomplete="name" placeholder="Nguyễn Văn A"></label>
+    <label class="field">Đơn vị / Trường / Lớp<input id="fUnit" placeholder="VD: Đoàn trường THPT…"></label>
+    <label class="field">Số điện thoại (để liên hệ trao quà, không hiển thị công khai)<input id="fPhone" type="tel" inputmode="tel" placeholder="Không bắt buộc"></label>
+    <button class="btn" id="goBtn">Bắt đầu hành trình ➜</button>
+    <div class="note">Trò chơi sẽ xin quyền <b>vị trí</b> để biết bạn đang ở đâu trong khuôn viên và quyền <b>camera</b> khi dấu ấn xuất hiện. Nếu GPS yếu, hãy quét mã QR đặt tại mỗi điểm.</div>
+  </div>
+</section>
+
+<!-- MÀN HÌNH CHƠI -->
+<section id="play" class="screen">
+  <div class="hud">
+    <div class="who"><b id="hName">—</b><small id="hSub">0/9 dấu ấn</small></div>
+    <div class="pill" id="hScore">0 điểm</div>
+  </div>
+  <div class="mapwrap">
+    <svg id="map" viewBox="-106 -42 140 100" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="status" id="status">Đang tìm vị trí của bạn…</div>
+    <button class="zoomb" id="zoomB">◎ Gần tôi</button>
+    <div class="testbar">🧪 Chế độ thử: chạm vào bản đồ để giả lập vị trí của bạn.</div>
+  </div>
+  <div class="dock">
+    <button id="bCatch"><b>✨</b>Bắt dấu ấn</button>
+    <button id="bBook"><b>📖</b>Sổ tay</button>
+    <button id="bQR"><b>📷</b>Quét QR</button>
+    <button id="bRank"><b>🏆</b>Xếp hạng</button>
+  </div>
+</section>
+
+<!-- GẶP DẤU ẤN -->
+<section id="enc">
+  <video id="encVideo" playsinline muted></video>
+  <div class="enc-top"><span id="encWhere">📍</span><button id="encClose">✕ Rời đi</button></div>
+  <div class="float" id="encFloat"><div class="glow" id="encPic"></div><div class="nm" id="encName"></div><span class="rr" id="encRar"></span><div class="cr" id="encCredit"></div></div>
+  <div class="enc-bottom" id="encBottom"></div>
+</section>
+
+<!-- CÁC CỬA SỔ -->
+<div class="modal" id="mBook"><div class="sheet"><button class="x" data-close>✕</button><h2>Sổ tay hành trình</h2><div class="sub" id="bookSub"></div><div class="grid" id="bookGrid"></div><div class="credits" id="bookCredits"></div></div></div>
+<div class="modal" id="mRank"><div class="sheet"><button class="x" data-close>✕</button><h2>Bảng xếp hạng</h2><div class="sub" id="rankSub">Xếp theo điểm, bằng điểm thì ai xong nhanh hơn đứng trên.</div><div id="rankBody"></div></div></div>
+<div class="modal" id="mQR"><div class="sheet"><button class="x" data-close>✕</button><h2>Quét mã QR tại điểm</h2><div class="sub">Dùng khi GPS yếu (ví dụ dưới mái nhà). Mỗi điểm có một mã QR dán sẵn.</div><div id="qrBody"></div></div></div>
+<div class="modal" id="mReward"><div class="sheet reward" id="rewardBody"></div></div>
+
+<div class="toast" id="toast"></div>
+<canvas class="confetti" id="confetti"></canvas>
+
+<script type="module">
+import { CONFIG, CHECKPOINTS, ICONS, RARITY, PHOTOS, latLonToXZ } from './data.js?v=3';
+
+const $ = s => document.querySelector(s);
+const LS = 'nvhtn-hanhtrinh-v1';
+let S = load();
+function load() { try { return JSON.parse(localStorage.getItem(LS)) || null; } catch { return null; } }
+function save() { try { localStorage.setItem(LS, JSON.stringify(S)); } catch { } }
+const cpById = id => CHECKPOINTS.find(c => c.id === +id);
+const caughtCount = () => Object.keys(S?.caught || {}).length;
+function toast(t, ms = 2200) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), ms); }
+const icon = (cp) => `<svg viewBox="0 0 120 104">${ICONS[cp.icon]}</svg>`;
+// ảnh thật (nếu tải lỗi thì quay về hình vẽ)
+const photo = (cp) => { const ph = PHOTOS[cp.icon]; return ph ? `<img class="ph" src="${ph.src}" alt="${cp.name}" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML=window.__svgOf(${cp.id})">` : icon(cp); };
+window.__svgOf = id => { const c = cpById(id); return `<svg viewBox="0 0 120 104">${ICONS[c.icon]}</svg>`; };
+const credit = (cp) => { const ph = PHOTOS[cp.icon]; if (!ph) return ''; const t = `Ảnh: ${esc(ph.by)} · ${esc(ph.lic)}${ph.note ? ' · ' + esc(ph.note) : ''}`; return ph.page ? `<a href="${ph.page}" target="_blank" rel="noopener">${t}</a>` : t; };
+
+// ---------- bắt đầu ----------
+function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); }
+$('#goBtn').onclick = () => {
+  const name = $('#fName').value.trim();
+  if (name.length < 2) { toast('Bạn nhập họ tên nhé'); $('#fName').focus(); return; }
+  S = { pid: Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4), name, unit: $('#fUnit').value.trim(), phone: $('#fPhone').value.trim(),
+        start: Date.now(), caught: {}, score: 0, finishedAt: null, redeemed: false };
+  save(); sync(); enterPlay();
+};
+function enterPlay() { show('play'); renderHud(); drawMap(); fitView(); startGPS(); handleHash(); }
+
+// ---------- HUD ----------
+function renderHud() {
+  $('#hName').textContent = S.name;
+  $('#hSub').textContent = `${caughtCount()}/${CHECKPOINTS.length} dấu ấn` + (S.unit ? ` · ${S.unit}` : '');
+  $('#hScore').textContent = `${S.score} điểm`;
+}
+
+// ---------- bản đồ khuôn viên (toạ độ mét, cổng ở phía dưới) ----------
+const NS = 'http://www.w3.org/2000/svg';
+const map = $('#map');
+const el = (tag, attrs, parent = map) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
+let gPlayer, gCps;
+function drawMap() {
+  map.innerHTML = '';
+  el('rect', { x: -200, y: -200, width: 400, height: 400, fill: '#dfe8df' });
+  el('rect', { x: -200, y: 49.5, width: 400, height: 14, fill: '#5b5f66' });               // đường Hạ Long
+  el('text', { x: 12, y: 57.5, 'font-size': 3.2, fill: '#fff', 'font-weight': 700 }).textContent = 'Đường Hạ Long';
+  el('rect', { x: -111, y: -200, width: 10, height: 245, fill: '#5b5f66' });               // Phan Bội Châu
+  el('text', { x: -104.5, y: -20, 'font-size': 3, fill: '#fff', transform: 'rotate(-90 -104.5 -20)', 'font-weight': 700 }).textContent = 'Phan Bội Châu';
+  el('polygon', { points: '26,37.5 -25,37.5 -54.6,42.8 -99.6,28.6 -100.7,-35.2 26,-35.2', fill: '#e8e2d6', stroke: '#fff', 'stroke-width': 1 });
+  el('rect', { x: -40, y: 37.5, width: 90, height: 12, fill: '#d6ccbb' });
+  // sân bóng rổ
+  el('rect', { x: -21.5, y: 8.5, width: 32, height: 19, fill: '#e0643c', rx: .5 });
+  el('rect', { x: -19.5, y: 10.5, width: 28, height: 15, fill: '#2a55a8' });
+  el('line', { x1: -5.5, y1: 10.5, x2: -5.5, y2: 25.5, stroke: '#fff', 'stroke-width': .3 });
+  el('circle', { cx: -5.5, cy: 18, r: 1.8, fill: '#e0643c' });
+  // công trình
+  const bld = (x, y, w, h, label, fill = '#bfc6cc') => { el('rect', { x, y, width: w, height: h, fill, stroke: '#fff', 'stroke-width': .6, rx: .6 }); if (label) el('text', { x: x + w / 2, y: y + h / 2 + 1.2, 'font-size': 3, 'text-anchor': 'middle', fill: '#3a4550', 'font-weight': 600 }).textContent = label; };
+  bld(-63, -13.5, 35, 33.1, 'Khối mái ngũ giác', '#c9d0d6');
+  el('circle', { cx: -34.1, cy: -11.5, r: 10.5, fill: '#b5bdc4', stroke: '#fff', 'stroke-width': .6 });
+  el('text', { x: -34.1, y: -10.5, 'font-size': 2.8, 'text-anchor': 'middle', fill: '#3a4550' }).textContent = 'Khối tròn';
+  bld(-20.9, -18, 41.8, 18, 'Khối nhà chính', '#aeb8c1');
+  el('rect', { x: -18.9, y: -0.6, width: 22.4, height: 1.2, fill: '#1f8f8a' });
+  bld(-85, -31, 34, 13, 'Dãy nhà 2 tầng', '#e3cfa8');
+  bld(17, -7, 7.3, 33.5, '', '#cfd5d9');
+  el('text', { x: 20.6, y: 10, 'font-size': 2.6, 'text-anchor': 'middle', fill: '#3a4550', transform: 'rotate(90 20.6 10)' }).textContent = 'Mái che giữ xe';
+  el('circle', { cx: -15.3, cy: 36.4, r: 3.2, fill: '#d2232a' });
+  el('text', { x: -5.5, y: 41.5, 'font-size': 2.8, 'text-anchor': 'middle', fill: '#5a4630', 'font-weight': 700 }).textContent = '▲ Cổng chính';
+  [[-40, 39, 4], [-48, 34, 3.5], [-32, 44, 3.4], [-58, 38, 3], [13, 36, 3.6], [20, 31, 3.2], [7, 41, 2.8], [-96, -10, 3], [-96, 4, 2.8]].forEach(([x, y, r]) => el('circle', { cx: x, cy: y, r, fill: '#6fae5c', opacity: .85 }));
+  // bán kính bắt + dấu ấn
+  gCps = el('g', {});
+  gPlayer = el('g', { display: 'none' });
+  el('circle', { r: 6, fill: '#2a7fd0', opacity: .15, id: 'acc' }, gPlayer);
+  el('circle', { r: 1.9, fill: '#2a7fd0', stroke: '#fff', 'stroke-width': .8 }, gPlayer);
+  drawCps();
+}
+function drawCps(near) {
+  gCps.innerHTML = '';
+  CHECKPOINTS.forEach(cp => {
+    const got = !!S.caught[cp.id], rc = RARITY[cp.rarity].color, isNear = near && near.id === cp.id;
+    const g = el('g', { transform: `translate(${cp.x} ${cp.z})`, style: 'cursor:pointer' }, gCps);
+    el('circle', { r: CONFIG.CATCH_RADIUS, fill: isNear ? rc : 'none', opacity: isNear ? .14 : 1, stroke: rc, 'stroke-width': .35, 'stroke-dasharray': '1.2 1.2' }, g);
+    el('circle', { r: 4.6, fill: got ? '#fff' : '#1d2733', stroke: rc, 'stroke-width': 1.1 }, g);
+    if (got) { const s = el('svg', { x: -3.8, y: -3.4, width: 7.6, height: 6.6, viewBox: '0 0 120 104' }, g); s.innerHTML = ICONS[cp.icon]; }
+    else el('text', { y: 1.6, 'font-size': 4.6, 'text-anchor': 'middle', fill: '#fff', 'font-weight': 800 }, g).textContent = '?';
+    el('text', { y: 8.2, 'font-size': 2.5, 'text-anchor': 'middle', fill: '#26313b', 'font-weight': 700 }, g).textContent = got ? cp.name : cp.spot.split(' (')[0];
+    g.addEventListener('click', () => { if (testMode) return; toast(got ? `Đã thu thập: ${cp.name}` : `Dấu ấn ẩn tại: ${cp.spot}`); });
+  });
+}
+
+// ---------- GPS ----------
+let me = null, nearCp = null, watchId = null;
+const testMode = /(^|[#&])test\b/.test(location.hash) || new URLSearchParams(location.search).has('test');
+if (testMode) document.body.classList.add('test');
+function startGPS() {
+  if (testMode) { setStatus('🧪 Chế độ thử — chạm bản đồ để đặt vị trí.'); return; }
+  if (!('geolocation' in navigator)) { setStatus('Thiết bị không hỗ trợ GPS — hãy dùng <b>Quét QR</b> tại mỗi điểm.'); return; }
+  if (watchId != null) return;
+  watchId = navigator.geolocation.watchPosition(p => {
+    const { x, z } = latLonToXZ(p.coords.latitude, p.coords.longitude);
+    updateMe(x, z, p.coords.accuracy);
+  }, err => {
+    setStatus(err.code === 1 ? 'Bạn chưa cho phép truy cập vị trí. Hãy bật quyền vị trí cho trang này, hoặc dùng <b>Quét QR</b>.' : 'Chưa lấy được vị trí GPS — thử ra chỗ thoáng, hoặc dùng <b>Quét QR</b>.');
+  }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
+}
+map.addEventListener('click', e => {
+  if (!testMode) return;
+  const pt = map.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+  const p = pt.matrixTransform(map.getScreenCTM().inverse());
+  updateMe(p.x, p.y, 4);
+});
+// khung nhìn bản đồ: toàn cảnh hoặc phóng gần vị trí người chơi
+let viewMode = 'all', autoZoomed = false;
+function fitView() {
+  const W = map.clientWidth || 1, H = map.clientHeight || 1, ar = H / W;
+  if (viewMode === 'me' && me) {
+    const w = W < H ? 62 : 100, h = w * ar;
+    map.setAttribute('viewBox', `${me.x - w / 2} ${me.z - h * 0.45} ${w} ${h}`);
+  } else {
+    // vừa khít khuôn viên (x -106…34, z -42…58), giữ tỉ lệ màn hình
+    let w = 140, h = 100; if (h / w < ar) h = w * ar; else w = h / ar;
+    map.setAttribute('viewBox', `${-36 - w / 2} ${8 - h / 2} ${w} ${h}`);
+  }
+  $('#zoomB').textContent = viewMode === 'me' ? '⤢ Toàn cảnh' : '◎ Gần tôi';
+}
+$('#zoomB').onclick = () => { if (!me && viewMode === 'all') { toast('Chưa có vị trí của bạn'); return; } viewMode = viewMode === 'me' ? 'all' : 'me'; fitView(); };
+addEventListener('resize', fitView);
+function setStatus(h) { $('#status').innerHTML = h; }
+function updateMe(x, z, acc) {
+  me = { x, z, acc };
+  gPlayer.setAttribute('display', ''); gPlayer.setAttribute('transform', `translate(${x} ${z})`);
+  gPlayer.querySelector('#acc').setAttribute('r', Math.min(acc, 40));
+  if (!autoZoomed && map.clientWidth < map.clientHeight && x > -110 && x < 40 && z > -45 && z < 60) { autoZoomed = true; viewMode = 'me'; }
+  fitView();
+  const inSite = x > -110 && x < 40 && z > -45 && z < 60;
+  // dấu ấn gần nhất chưa thu thập
+  let best = null;
+  CHECKPOINTS.forEach(cp => { if (S.caught[cp.id]) return; const d = Math.hypot(cp.x - x, cp.z - z); if (!best || d < best.d) best = { cp, d }; });
+  const reach = CONFIG.CATCH_RADIUS + Math.min(acc, 20) * 0.5;
+  nearCp = best && best.d <= reach ? best.cp : null;
+  drawCps(nearCp);
+  $('#bCatch').classList.toggle('hot', !!nearCp);
+  const accTxt = `GPS ±${Math.round(acc)} m`;
+  if (!inSite) setStatus(`Bạn đang ở ngoài khuôn viên Nhà Văn hóa (${accTxt}). Hãy đến <b>160 Hạ Long, Vũng Tàu</b> để bắt đầu.`);
+  else if (!best) setStatus('🎉 Bạn đã thu thập đủ dấu ấn! Mở <b>Sổ tay</b> để nhận quà.');
+  else if (nearCp) setStatus(`✨ <b>Có dấu ấn ở gần!</b> Bấm <b>Bắt dấu ấn</b> ngay. <span style="color:#5f6b78">(${accTxt})</span>`);
+  else setStatus(`Dấu ấn gần nhất: <b>${best.cp.spot}</b> — cách khoảng <b>${Math.round(best.d)} m</b>. <span style="color:#5f6b78">${accTxt}${acc > 25 ? ' · GPS yếu, có thể dùng Quét QR' : ''}</span>`);
+}
+$('#bCatch').onclick = () => {
+  if (nearCp) openEncounter(nearCp, 'gps');
+  else toast(me ? 'Chưa có dấu ấn trong phạm vi — hãy đi đến vòng tròn trên bản đồ.' : 'Đang chờ GPS… hoặc dùng Quét QR.');
+};
+
+// ---------- gặp dấu ấn ----------
+let encStream = null, encCp = null, lockUntil = 0;
+async function openEncounter(cp, via) {
+  if (S.caught[cp.id]) { toast(`Bạn đã có dấu ấn "${cp.name}" rồi!`); return; }
+  encCp = cp; const R = RARITY[cp.rarity];
+  $('#encPic').innerHTML = photo(cp);
+  $('#encCredit').innerHTML = credit(cp);
+  $('#encName').textContent = cp.name;
+  const rr = $('#encRar'); rr.textContent = `${R.name} · ${cp.region}`; rr.style.background = R.color;
+  $('#encFloat').style.setProperty('--rc', R.color); $('#encFloat').classList.remove('caught');
+  $('#encWhere').textContent = `📍 ${cp.spot}${via === 'qr' ? ' · QR' : ''}`;
+  $('#encBottom').innerHTML = `<div class="fact">${cp.fact}</div><button class="btn wide" id="encGo">✨ Thu thập dấu ấn</button>`;
+  $('#encGo').onclick = () => askQuestion(cp);
+  $('#enc').classList.add('on');
+  try {
+    encStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    const v = $('#encVideo'); v.srcObject = encStream; v.style.display = 'block'; await v.play();
+  } catch { $('#encVideo').style.display = 'none'; }
+}
+function closeEncounter() {
+  $('#enc').classList.remove('on');
+  if (encStream) { encStream.getTracks().forEach(t => t.stop()); encStream = null; }
+}
+$('#encClose').onclick = closeEncounter;
+function shuffle(a) { const b = a.map((t, i) => [t, i]); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; }
+function askQuestion(cp) {
+  const tries = (S.tries?.[cp.id] || 0);
+  $('#encBottom').innerHTML = `<div class="q">${cp.q}</div><div class="opts">${shuffle(cp.a).map(([t, i]) => `<button data-i="${i}">${t}</button>`).join('')}</div>`;
+  $('#encBottom').querySelectorAll('.opts button').forEach(b => b.onclick = () => {
+    if (Date.now() < lockUntil) { toast(`Chờ ${Math.ceil((lockUntil - Date.now()) / 1000)} giây rồi thử lại nhé`); return; }
+    S.tries = S.tries || {}; S.tries[cp.id] = (S.tries[cp.id] || 0) + 1; save();
+    if (b.dataset.i === '0') { b.classList.add('ok'); setTimeout(() => collect(cp, S.tries[cp.id]), 450); }
+    else { b.classList.add('bad'); lockUntil = Date.now() + 10000; toast('Chưa đúng rồi! Thử lại sau 10 giây.'); }
+  });
+}
+function collect(cp, tries) {
+  const R = RARITY[cp.rarity], bonus = tries === 1 ? 50 : 0;
+  S.caught[cp.id] = { t: Date.now(), tries };
+  S.score += R.pts + bonus;
+  if (caughtCount() >= CONFIG.REWARD_MIN && !S.finishedAt) S.finishedAt = Date.now();
+  save(); sync(); renderHud(); drawCps(); if (me) updateMe(me.x, me.z, me.acc);
+  $('#encFloat').classList.add('caught'); burst();
+  $('#encBottom').innerHTML = `<div class="q">🎉 Đã thu thập “${cp.name}”!</div><div class="fact">+${R.pts} điểm (${R.name})${bonus ? ` · +${bonus} điểm trả lời đúng ngay lần đầu` : ''}. Bạn có ${caughtCount()}/${CHECKPOINTS.length} dấu ấn.</div>
+    <button class="btn wide" id="encDone">${caughtCount() >= CONFIG.REWARD_MIN ? '🎁 Nhận quà' : 'Tiếp tục hành trình'}</button>`;
+  $('#encDone').onclick = () => { closeEncounter(); if (caughtCount() >= CONFIG.REWARD_MIN) openReward(); };
+}
+
+// ---------- QR ----------
+function handleHash() {
+  const m = location.hash.match(/cp=(\d+)-([a-z0-9]+)/i);
+  if (!m) return;
+  try { history.replaceState(null, '', location.pathname + location.search + (testMode ? '#test' : '')); } catch { }
+  const cp = cpById(m[1]);
+  if (!cp || cp.key !== m[2]) { toast('Mã QR không hợp lệ'); return; }
+  setTimeout(() => openEncounter(cp, 'qr'), 300);
+}
+window.addEventListener('hashchange', () => { if (S) handleHash(); });
+let scanStream = null, scanTimer = null;
+$('#bQR').onclick = async () => {
+  openModal('mQR');
+  const body = $('#qrBody');
+  if ('BarcodeDetector' in window) {
+    body.innerHTML = `<video id="scanVideo" playsinline muted></video><div class="sub" style="margin-top:8px">Đưa mã QR vào khung hình…</div>`;
+    try {
+      scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      const v = $('#scanVideo'); v.srcObject = scanStream; await v.play();
+      const det = new BarcodeDetector({ formats: ['qr_code'] });
+      scanTimer = setInterval(async () => {
+        try { const r = await det.detect(v); if (r[0]) { const u = r[0].rawValue; const m = u.match(/cp=(\d+)-([a-z0-9]+)/i); if (m) { stopScan(); closeModal('mQR'); location.hash = `cp=${m[1]}-${m[2]}`; } } } catch { }
+      }, 400);
+      return;
+    } catch { }
+  }
+  body.innerHTML = `<ol class="how"><li>Mở ứng dụng <b>Camera</b> (hoặc Zalo → Quét mã) trên điện thoại.</li><li>Hướng vào mã QR dán tại điểm.</li><li>Bấm vào đường link hiện ra — trò chơi sẽ mở đúng dấu ấn tại điểm đó.</li></ol>`;
+};
+function stopScan() { clearInterval(scanTimer); if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; } }
+
+// ---------- sổ tay ----------
+$('#bBook').onclick = () => {
+  $('#bookSub').innerHTML = `${caughtCount()}/${CHECKPOINTS.length} dấu ấn · ${S.score} điểm` + (caughtCount() >= CONFIG.REWARD_MIN ? ` · <a href="#" id="toReward">🎁 Nhận quà</a>` : ` · cần ${CONFIG.REWARD_MIN} dấu ấn để đổi quà`);
+  $('#bookGrid').innerHTML = CHECKPOINTS.map(cp => { const got = S.caught[cp.id], R = RARITY[cp.rarity];
+    return `<div class="card ${got ? '' : 'lock'}" style="border-color:${got ? R.color : 'transparent'}"><div class="pw">${photo(cp)}${got ? '' : '<span class="qm">?</span>'}</div><b>${got ? cp.name : '???'}</b><div class="r" style="color:${R.color}">${R.name}</div>${got ? '' : `<div style="color:#5f6b78;font-size:10.5px;margin-top:2px">${cp.spot.split(' (')[0]}</div>`}</div>`; }).join('');
+  $('#bookGrid').insertAdjacentHTML('afterend', '');
+  $('#bookCredits').innerHTML = '<b>Nguồn ảnh</b> (Wikimedia Commons, giấy phép tự do):<br>' + CHECKPOINTS.filter(c => PHOTOS[c.icon]).map(c => `${c.name}: ${credit(c)}`).join('<br>');
+  const tr = $('#toReward'); if (tr) tr.onclick = e => { e.preventDefault(); closeModal('mBook'); openReward(); };
+  openModal('mBook');
+};
+
+// ---------- xếp hạng (Google Sheet) ----------
+$('#bRank').onclick = async () => {
+  openModal('mRank');
+  const body = $('#rankBody');
+  if (!CONFIG.SHEET_API) { body.innerHTML = `<div class="sub">Bảng xếp hạng online chưa được bật. Điểm của bạn: <b>${S.score}</b> (${caughtCount()} dấu ấn).</div>`; return; }
+  body.innerHTML = '<div class="sub">Đang tải…</div>';
+  try {
+    const r = await fetch(CONFIG.SHEET_API + '?action=top&t=' + Date.now()); const d = await r.json();
+    const rows = d.rows || [];
+    body.innerHTML = rows.length ? `<table class="lb">${rows.map((x, i) => `<tr class="${x.pid === S.pid ? 'me' : ''}"><td>${i + 1}</td><td><b>${esc(x.name)}</b><br><small style="color:#5f6b78">${esc(x.unit || '')}</small></td><td style="text-align:right"><b>${x.score}</b><br><small style="color:#5f6b78">${x.count} dấu ấn${x.minutes ? ` · ${x.minutes} phút` : ''}</small></td></tr>`).join('')}</table>` : '<div class="sub">Chưa có ai trên bảng — bạn hãy là người đầu tiên!</div>';
+  } catch { body.innerHTML = '<div class="sub">Không tải được bảng xếp hạng (kiểm tra mạng).</div>'; }
+};
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function sync() {
+  if (!CONFIG.SHEET_API || !S) return;
+  const minutes = S.finishedAt ? Math.round((S.finishedAt - S.start) / 60000) : '';
+  const body = JSON.stringify({ pid: S.pid, name: S.name, unit: S.unit, phone: S.phone, score: S.score, count: caughtCount(), minutes, finished: !!S.finishedAt, redeemed: !!S.redeemed });
+  fetch(CONFIG.SHEET_API, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body }).catch(() => { });
+}
+
+// ---------- đổi quà ----------
+function rewardCode() { // mã 6 ký tự từ mã người chơi + tên + điểm
+  let h = 2166136261; for (const ch of S.pid + '|' + S.name + '|' + S.score) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(36).toUpperCase().padStart(6, '0').slice(-6);
+}
+let clockT = null;
+function openReward() {
+  const mins = S.finishedAt ? Math.max(1, Math.round((S.finishedAt - S.start) / 60000)) : '—';
+  $('#rewardBody').innerHTML = `<button class="x" data-close>✕</button><div style="font-size:46px">🏆</div><h2>Hoàn thành hành trình!</h2>
+    <div class="sub">${esc(S.name)}${S.unit ? ' · ' + esc(S.unit) : ''}<br>${caughtCount()}/${CHECKPOINTS.length} dấu ấn · <b>${S.score} điểm</b> · ${mins} phút</div>
+    <div class="sub" style="margin:0">Mã đổi quà</div><div class="code">${rewardCode()}</div>
+    <div class="clock">Màn hình xác thực · <b id="clk"></b></div>
+    ${S.redeemed ? `<div class="stamp">ĐÃ NHẬN QUÀ</div><div class="sub">Lúc ${new Date(S.redeemed).toLocaleString('vi-VN')}</div>`
+      : `<div class="sub" style="margin-top:14px">Đưa màn hình này cho nhân viên tại quầy. <b>Nhân viên</b> nhập mã PIN để xác nhận trao quà.</div>
+         <div class="pin"><input id="pinIn" type="password" inputmode="numeric" maxlength="8" placeholder="PIN"><button class="btn" id="pinOk">Xác nhận</button></div>`}`;
+  $('#rewardBody').querySelector('[data-close]').onclick = () => closeModal('mReward');
+  const pinOk = $('#pinOk');
+  if (pinOk) pinOk.onclick = () => {
+    if ($('#pinIn').value === CONFIG.STAFF_PIN) { S.redeemed = Date.now(); save(); sync(); burst(); openReward(); }
+    else toast('PIN không đúng');
+  };
+  clearInterval(clockT); const tick = () => { const c = $('#clk'); if (c) c.textContent = new Date().toLocaleTimeString('vi-VN'); }; tick(); clockT = setInterval(tick, 1000);
+  openModal('mReward');
+}
+
+// ---------- tiện ích ----------
+function openModal(id) { $('#' + id).classList.add('on'); }
+function closeModal(id) { $('#' + id).classList.remove('on'); if (id === 'mQR') stopScan(); }
+document.querySelectorAll('.modal').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m || e.target.hasAttribute('data-close')) closeModal(m.id); });
+});
+function burst() { // pháo giấy
+  const c = $('#confetti'), g = c.getContext('2d'); c.width = innerWidth; c.height = innerHeight;
+  const P = Array.from({ length: 90 }, () => ({ x: innerWidth / 2, y: innerHeight * .35, vx: (Math.random() - .5) * 12, vy: -Math.random() * 12 - 3, c: ['#ffd400', '#d2232a', '#0f8f86', '#2a7fd0', '#7a4fd6'][Math.random() * 5 | 0], s: 4 + Math.random() * 5 }));
+  let n = 0; (function f() { g.clearRect(0, 0, c.width, c.height); P.forEach(p => { p.vy += .35; p.x += p.vx; p.y += p.vy; g.fillStyle = p.c; g.fillRect(p.x, p.y, p.s, p.s * .6); }); if (++n < 90) requestAnimationFrame(f); else g.clearRect(0, 0, c.width, c.height); })();
+}
+
+// ---------- khởi động ----------
+if (S) enterPlay(); else show('start');
+window.__game = { get S() { return S; }, updateMe, CHECKPOINTS };
+</script>
+</body>
+</html>
