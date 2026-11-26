@@ -206,9 +206,10 @@ export function initEvents({ THREE, scene, camera, controls, renderer, CSS2DObje
   // chỗ đặt vật thể mới: giữa màn hình nếu ở đó là mặt đất trống, nếu không thì giữa sân trung tâm
   function spawnPoint(def) {
     const r = renderer.domElement.getBoundingClientRect();
-    ndc.set(0, 0); ray.setFromCamera(ndc, camera);
+    ndc.set(0, window.__viewNdcY || 0); ray.setFromCamera(ndc, camera); // tâm phần màn hình đang thấy
     const hit = ray.intersectObjects(scene.children, true).find(h => h.object.visible && !h.object.userData.pick && !h.object.isLine && !h.object.isSprite);
-    let p = hit && hit.point.y < 0.3 ? hit.point.clone() : new THREE.Vector3(-5.5, 0, 22);
+    const inSite = q => q.x > -100 && q.x < 26 && q.z > -35 && q.z < 40; // chỉ đặt trong khuôn viên
+    let p = hit && hit.point.y < 0.3 && inSite(hit.point) ? hit.point.clone() : new THREE.Vector3(-5.5, 0, 22);
     // tránh chồng lên vật thể vừa đặt
     const overlaps = () => items.some(g => { const q = sizeOf(g); return Math.abs(g.position.x - p.x) < (q.w + def.w) / 2 + 0.5 && Math.abs(g.position.z - p.z) < (q.d + def.d) / 2 + 0.5; });
     for (let k = 0; k < 80 && overlaps(); k++) p.x += 1;

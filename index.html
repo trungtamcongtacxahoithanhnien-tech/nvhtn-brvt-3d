@@ -70,13 +70,33 @@
   .hide-labels .lbl { display:none; }
   .hide-ctx .lbl.ctx { display:none; }
   @media (max-width: 1100px) { #note { display:none; } }
-  @media (max-width: 720px) {
-    #legend { top:auto; bottom:150px; right:12px; left:12px; width:auto; max-height:22%; }
-    #note { display:none; }
-    #top { right:12px; max-width:none; }
-    #nav { bottom:auto; top:200px; width:126px; }
-    #evPanel { top:auto; bottom:calc(22% + 170px); right:12px; width:auto; max-height:25%; }
+  /* ---------- ĐIỆN THOẠI / MÀN HÌNH HẸP: bảng gom vào thanh tab đáy ---------- */
+  #mtabs, #mtitle { display:none; }
+  @media (max-width: 900px) {
+    #mtitle { display:block; position:fixed; top:8px; left:8px; right:8px; text-align:center; font-size:13px; font-weight:700; padding:6px 10px; z-index:5; }
+    #mtabs { display:flex; position:fixed; left:0; right:0; bottom:0; height:58px; background:rgba(255,255,255,.97); box-shadow:0 -2px 12px rgba(20,30,50,.15); z-index:30; }
+    #mtabs button { flex:1; border:none; border-radius:0; background:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; font-size:10.5px; padding:4px 0; color:var(--muted); }
+    #mtabs button b { font-size:19px; line-height:1; font-weight:400; }
+    #mtabs button.on { color:var(--accent); background:#eef6f5; }
+    #top, #legend, #sunPanel, #evPanel, #nav { display:none; position:fixed !important; left:0 !important; right:0 !important; top:auto !important; bottom:58px !important;
+      width:auto !important; max-width:none !important; transform:none !important; max-height:46vh !important; overflow:auto; border-radius:14px 14px 0 0 !important; padding:12px 14px !important; z-index:25; }
+    body[data-sheet="top"] #top, body[data-sheet="legend"] #legend, body[data-sheet="sunPanel"] #sunPanel,
+    body[data-sheet="evPanel"] #evPanel, body[data-sheet="nav"] #nav { display:block; }
+    #top h1, #top > p { display:none; }
+    #top .row:first-of-type { margin-top:0; }
+    #nav .pad { max-width:260px; margin:0 auto; } #nav .pad button { padding:12px 0; font-size:18px; } #nav .wide { max-width:260px; display:block; margin:0 auto 8px; }
+    #legend li { padding:7px 4px; }
+    #evToggle { display:none; }
+    #note { display:none !important; }
+    #measureInfo { bottom:70px !important; max-width:calc(100% - 16px); }
+    #evBanner { top:46px; left:8px; right:8px; transform:none; flex-wrap:wrap; font-size:12px; }
+    .lbl.pin .num { width:20px; height:20px; font-size:11px; }
+    .lbl.ctx { font-size:10px; padding:2px 6px; }
+    .evlbl { font-size:10.5px; }
+    button { padding:8px 11px; }
+    .sheet-close { display:block !important; }
   }
+  .sheet-close { display:none; position:sticky; top:-12px; margin:-12px -14px 6px auto; float:right; border:none; background:none; font-size:20px; padding:4px 10px; color:var(--muted); }
 </style>
 <script type="importmap">
 { "imports": {
@@ -87,6 +107,14 @@
 </head>
 <body>
 <div id="app"></div>
+<div id="mtitle" class="panel">Nhà Văn hóa Thanh niên Bà Rịa – Vũng Tàu</div>
+<nav id="mtabs">
+  <button data-sheet="top"><b>👁</b>Xem</button>
+  <button data-sheet="legend"><b>📍</b>Khu vực</button>
+  <button data-sheet="sunPanel"><b>☀️</b>Nắng</button>
+  <button data-sheet="evPanel"><b>🎪</b>Bố trí</button>
+  <button data-sheet="nav"><b>🧭</b>Di chuyển</button>
+</nav>
 
 <div id="top" class="panel">
   <h1>Nhà Văn hóa Thanh niên Bà Rịa – Vũng Tàu</h1>
@@ -163,6 +191,8 @@ scene.background = new THREE.Color(0xbcd8f0);
 scene.fog = new THREE.Fog(0xbcd8f0, 260, 520);
 
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.5, 2000);
+const fitFov = () => { camera.fov = camera.aspect < 0.8 ? 64 : 45; camera.updateProjectionMatrix(); };
+fitFov();
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; controls.maxPolarAngle = Math.PI / 2 - 0.03; controls.maxDistance = 450; controls.minDistance = 4;
 
@@ -422,7 +452,7 @@ window.addEventListener('keydown', e => {
 });
 
 addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  camera.aspect = innerWidth / innerHeight; fitFov();
   renderer.setSize(innerWidth, innerHeight); labelRenderer.setSize(innerWidth, innerHeight);
 });
 
@@ -443,6 +473,34 @@ renderer.setAnimationLoop(now => {
   labelRenderer.render(scene, camera);
 });
 if (/github\.io$/.test(location.hostname)) document.getElementById('glbLink').style.display = 'inline';
+// ---------- thanh tab trên điện thoại ----------
+const mobileQ = matchMedia('(max-width: 900px)');
+function openSheet(name) {
+  const cur = document.body.dataset.sheet;
+  const next = cur === name ? '' : name;
+  if (next) document.body.dataset.sheet = next; else delete document.body.dataset.sheet;
+  document.querySelectorAll('#mtabs button').forEach(b => b.classList.toggle('on', b.dataset.sheet === next));
+  shiftForSheet();
+}
+// dời khung nhìn lên trên khi bảng đang mở, để mô hình không bị che
+function shiftForSheet() {
+  const el = document.body.dataset.sheet && document.getElementById(document.body.dataset.sheet);
+  const hidden = el && mobileQ.matches ? el.getBoundingClientRect().height + 58 : 0;
+  window.__viewNdcY = hidden / innerHeight;
+  if (hidden > 0) camera.setViewOffset(innerWidth, innerHeight, 0, Math.round(hidden / 2), innerWidth, innerHeight);
+  else camera.clearViewOffset();
+}
+addEventListener('resize', () => setTimeout(shiftForSheet, 0));
+document.querySelectorAll('#mtabs button').forEach(b => b.onclick = () => openSheet(b.dataset.sheet));
+['top', 'legend', 'sunPanel', 'evPanel', 'nav'].forEach(id => {
+  const el = document.getElementById(id); if (!el) return;
+  const x = document.createElement('button'); x.className = 'sheet-close'; x.textContent = '✕'; x.title = 'Đóng';
+  x.onclick = () => openSheet(document.body.dataset.sheet); el.prepend(x);
+});
+// trên điện thoại: chọn góc nhìn / khu vực xong thì đóng bảng để thấy mô hình
+const closeOnMobile = () => { if (mobileQ.matches && document.body.dataset.sheet) openSheet(document.body.dataset.sheet); };
+document.querySelectorAll('#views button').forEach(b => b.addEventListener('click', closeOnMobile));
+document.querySelectorAll('#zones li').forEach(li => li.addEventListener('click', closeOnMobile));
 window.__ready = true;
 </script>
 </body>
