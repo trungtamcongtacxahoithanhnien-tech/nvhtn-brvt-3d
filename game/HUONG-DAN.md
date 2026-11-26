@@ -9,7 +9,10 @@ Chế độ thử (chạm bản đồ để giả lập vị trí, dùng khi ki�
 2. **In 9 mã QR** từ trang in, dán đúng vị trí ghi trên thẻ (sảnh chính, cổng, mép sân bóng rổ, mái che xe, tầng trệt, khu ẩm thực, dãy xe đẩy, bãi đất trống phía Đông, sân sau).
 3. **Đi thử một vòng** bằng điện thoại thật: GPS ngoài trời thường sai 5–10 m; điểm dưới mái (tầng trệt, mái che xe) nên ưu tiên quét QR.
 
-## 2. Bật bảng xếp hạng online (Google Sheet) — khoảng 5 phút
+## 2. Bảng xếp hạng online (Google Sheet)
+**Đã bật** (26/11/2026): dữ liệu ghi vào tab `BangXepHang` của Google Sheet https://docs.google.com/spreadsheets/d/1EAqVSE_HXp4hYO2B4XOGhDH7EcsiuXGRscPuHIIJGJM — mã chạy trong dự án Apps Script "BXH Hanh trinh Thanh pho toi yeu" (tài khoản trungtamcongtacxahoithanhnien@gmail.com). Khi sửa mã Apps Script phải **Triển khai → Quản lý triển khai → Chỉnh sửa → Phiên bản mới** để link giữ nguyên.
+
+Cách làm lại từ đầu (nếu cần):
 1. Tạo một Google Sheet mới (ví dụ "BXH Hành trình Thành phố tôi yêu").
 2. Vào **Tiện ích mở rộng → Apps Script**, xóa hết nội dung có sẵn, dán toàn bộ file `game/apps-script.gs`, bấm 💾 Lưu.
 3. Bấm **Triển khai → Tùy chọn triển khai mới → Loại: Ứng dụng web**.
@@ -30,3 +33,6 @@ Sheet sẽ có tab `BangXepHang` với: họ tên, đơn vị, số điện tho�
 - Tiến độ lưu trên trình duyệt của người chơi; xóa dữ liệu trình duyệt sẽ mất tiến độ.
 - Một người có thể chơi lại bằng trình duyệt khác — đối chiếu số điện thoại trong Sheet khi trao giải lớn.
 - Toạ độ các điểm đo từ ảnh vệ tinh Google Maps; có thể lệch vài mét so với GPS thực tế.
+
+## 5. Bản đồ 3D
+Màn hình chơi dùng mô hình 3D Nhà Văn hóa (cùng mô hình ở trang chính). Người chơi là nhân vật màu xanh; mỗi dấu ấn là một cột sáng có thẻ “?”. Kéo để xoay, chụm 2 ngón để phóng to. Nút **🗺 Bản đồ 2D** chuyển sang bản đồ phẳng cho máy yếu.

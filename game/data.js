@@ -6,7 +6,7 @@
 export const CONFIG = {
   EVENT_NAME: 'Hành trình Thành phố tôi yêu',
   // Link Web App Google Apps Script (xem HUONG-DAN.md). Để trống = chưa có bảng xếp hạng online.
-  SHEET_API: '',
+  SHEET_API: 'https://script.google.com/macros/s/AKfycbzncoCLQNZ9HF0nvaN1lIW-H--y-ehgOf21g7dD9YL7vFNB7oIss-xnMR-wgusTffN6Ag/exec',
   STAFF_PIN: '2026',        // mã PIN nhân viên dùng để xác nhận đổi quà — NHỚ ĐỔI trước sự kiện
   REWARD_MIN: 9,            // số dấu ấn cần thu thập để được đổi quà
   CATCH_RADIUS: 15,         // bán kính (m) để "bắt" dấu ấn bằng GPS

@@ -1,13 +1,15 @@
 /**
  * BẢNG XẾP HẠNG – game "Hành trình Thành phố tôi yêu"
- * Dán toàn bộ file này vào Google Sheet → Tiện ích mở rộng → Apps Script, rồi Triển khai dạng Ứng dụng web
+ * Dán toàn bộ file này vào một dự án Apps Script, rồi Triển khai dạng Ứng dụng web
  * (Người truy cập: Bất kỳ ai). Xem HUONG-DAN.md.
  */
 const SHEET_NAME = 'BangXepHang';
+// ID của Google Sheet (lấy từ link docs.google.com/spreadsheets/d/<ID>/edit). Để trống nếu dán mã trực tiếp vào Sheet qua Tiện ích → Apps Script.
+const SHEET_ID = '1EAqVSE_HXp4hYO2B4XOGhDH7EcsiuXGRscPuHIIJGJM';
 const HEADERS = ['Cập nhật lúc', 'Mã người chơi', 'Họ tên', 'Đơn vị/Lớp', 'Số điện thoại', 'Điểm', 'Số dấu ấn', 'Thời gian hoàn thành (phút)', 'Hoàn thành', 'Đã nhận quà'];
 
 function sheet_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = SHEET_ID ? SpreadsheetApp.openById(SHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
   let sh = ss.getSheetByName(SHEET_NAME);
   if (!sh) { sh = ss.insertSheet(SHEET_NAME); sh.appendRow(HEADERS); sh.setFrozenRows(1); }
   return sh;

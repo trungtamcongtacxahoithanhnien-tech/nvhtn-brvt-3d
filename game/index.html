@@ -7,6 +7,12 @@
 <title>Hành trình Thành phố tôi yêu – Nhà Văn hóa Thanh niên</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
 <style>
   :root { --ink:#16212b; --muted:#5f6b78; --accent:#0f8f86; --accent2:#0f6f6a; --red:#d2232a; --gold:#e0a100; --bg:#eef4f3; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -40,6 +46,12 @@
   .status b { color:var(--accent2); }
   .zoomb { position:absolute; right:10px; bottom:10px; background:#fff; color:var(--ink); box-shadow:0 2px 10px rgba(0,0,0,.15); padding:10px 13px; font-size:13px; }
   .test .zoomb { bottom:52px; }
+  #map3d { position:absolute; inset:0; display:none; touch-action:none; z-index:0; }
+  .status, .zoomb, .modeb, .testbar { z-index:2; }
+  #map3d canvas { display:block; width:100%; height:100%; }
+  .m3d #map3d { display:block; } .m3d #map { visibility:hidden; }
+  .modeb { position:absolute; left:10px; bottom:10px; background:#fff; color:var(--ink); box-shadow:0 2px 10px rgba(0,0,0,.15); padding:10px 13px; font-size:13px; }
+  .test .modeb { bottom:52px; }
   .testbar { position:absolute; left:10px; right:10px; bottom:10px; background:#fff3cd; border:1px solid #f0c36d; border-radius:10px; padding:7px 10px; font-size:12px; display:none; }
   .test .testbar { display:block; }
   .dock { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; padding:8px 8px calc(8px + env(safe-area-inset-bottom)); background:#fff; box-shadow:0 -2px 10px rgba(0,0,0,.06); }
@@ -126,7 +138,9 @@
   <div class="mapwrap">
     <svg id="map" viewBox="-106 -42 140 100" preserveAspectRatio="xMidYMid meet"></svg>
     <div class="status" id="status">Đang tìm vị trí của bạn…</div>
+    <div id="map3d"></div>
     <button class="zoomb" id="zoomB">◎ Gần tôi</button>
+    <button class="modeb" id="modeB">🗺 Bản đồ 2D</button>
     <div class="testbar">🧪 Chế độ thử: chạm vào bản đồ để giả lập vị trí của bạn.</div>
   </div>
   <div class="dock">
@@ -155,7 +169,10 @@
 <canvas class="confetti" id="confetti"></canvas>
 
 <script type="module">
-import { CONFIG, CHECKPOINTS, ICONS, RARITY, PHOTOS, latLonToXZ } from './data.js?v=3';
+import { CONFIG, CHECKPOINTS, ICONS, RARITY, PHOTOS, latLonToXZ } from './data.js?v=4';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { buildScene } from '../scene.js?v=7';
 
 const $ = s => document.querySelector(s);
 const LS = 'nvhtn-hanhtrinh-v1';
@@ -180,7 +197,7 @@ $('#goBtn').onclick = () => {
         start: Date.now(), caught: {}, score: 0, finishedAt: null, redeemed: false };
   save(); sync(); enterPlay();
 };
-function enterPlay() { show('play'); renderHud(); drawMap(); fitView(); startGPS(); handleHash(); }
+function enterPlay() { show('play'); renderHud(); drawMap(); fitView(); setMode(mode3d); startGPS(); handleHash(); }
 
 // ---------- HUD ----------
 function renderHud() {
@@ -229,6 +246,7 @@ function drawMap() {
   drawCps();
 }
 function drawCps(near) {
+  if (T) updateMarkers(near);
   gCps.innerHTML = '';
   CHECKPOINTS.forEach(cp => {
     const got = !!S.caught[cp.id], rc = RARITY[cp.rarity].color, isNear = near && near.id === cp.id;
@@ -239,6 +257,131 @@ function drawCps(near) {
     else el('text', { y: 1.6, 'font-size': 4.6, 'text-anchor': 'middle', fill: '#fff', 'font-weight': 800 }, g).textContent = '?';
     el('text', { y: 8.2, 'font-size': 2.5, 'text-anchor': 'middle', fill: '#26313b', 'font-weight': 700 }, g).textContent = got ? cp.name : cp.spot.split(' (')[0];
     g.addEventListener('click', () => { if (testMode) return; toast(got ? `Đã thu thập: ${cp.name}` : `Dấu ấn ẩn tại: ${cp.spot}`); });
+  });
+}
+
+// ---------- BẢN ĐỒ 3D (dùng mô hình 3D Nhà Văn hóa) ----------
+let T = null;
+let mode3d = true; try { mode3d = localStorage.getItem('nvhtn-map3d') !== '0'; } catch { }
+function setMode(on) {
+  mode3d = on; try { localStorage.setItem('nvhtn-map3d', on ? '1' : '0'); } catch { }
+  document.querySelector('.mapwrap').classList.toggle('m3d', on);
+  $('#modeB').textContent = on ? '🗺 Bản đồ 2D' : '🧊 Mô hình 3D';
+  if (on) { try { if (!T) init3D(); T.resize(); T.renderer.setAnimationLoop(T.loop); updateMarkers(nearCp); if (me) moveAvatar(me.x, me.z, me.acc); } catch (e) { console.error(e); toast('Máy không hỗ trợ 3D — dùng bản đồ 2D'); setMode(false); } }
+  else if (T) T.renderer.setAnimationLoop(null);
+}
+$('#modeB').onclick = () => setMode(!mode3d);
+function textTexture(text, w, h, style = {}) {
+  const pxPerM = 48, c = document.createElement('canvas');
+  c.width = Math.round(w * pxPerM); c.height = Math.round(h * pxPerM);
+  const g = c.getContext('2d');
+  if (style.bg) { g.fillStyle = style.bg; g.fillRect(0, 0, c.width, c.height); }
+  const lines = text.split('\n');
+  const fs = Math.min(c.height / lines.length * 0.68, c.width / (Math.max(...lines.map(l => l.length)) * 0.58));
+  g.font = `700 ${fs}px "Be Vietnam Pro", Arial, sans-serif`; g.fillStyle = style.color || '#222'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  lines.forEach((l, i) => g.fillText(l, c.width / 2, c.height * (i + 0.5) / lines.length));
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+// thẻ nổi trên mỗi điểm: vòng tròn màu độ hiếm + "?" hoặc "✓" + tên
+function markerTexture(cp, got, near) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 300; const g = c.getContext('2d'), R = RARITY[cp.rarity];
+  g.fillStyle = near ? R.color : '#1d2733'; g.beginPath(); g.arc(128, 110, 96, 0, Math.PI * 2); g.fill();
+  g.lineWidth = 16; g.strokeStyle = got ? '#2f9e6e' : R.color; g.stroke();
+  g.fillStyle = '#fff'; g.font = '800 120px "Be Vietnam Pro", Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(got ? '✓' : '?', 128, 116);
+  const label = got ? cp.name : cp.spot.split(' (')[0];
+  g.font = '700 30px "Be Vietnam Pro", Arial'; const w = Math.min(250, g.measureText(label).width + 24);
+  g.fillStyle = 'rgba(255,255,255,.95)'; g.fillRect(128 - w / 2, 226, w, 46); g.fillStyle = '#16212b';
+  g.fillText(label.length > 18 ? label.slice(0, 17) + '…' : label, 128, 250, 240);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function init3D() {
+  const box = $('#map3d');
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  box.appendChild(renderer.domElement);
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0xbcd8f0); scene.fog = new THREE.Fog(0xbcd8f0, 200, 480);
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.5, 1500);
+  scene.add(new THREE.HemisphereLight(0xdbeaff, 0x8a8370, 1.3));
+  const sun = new THREE.DirectionalLight(0xfff3df, 2.1); sun.position.set(60, 120, 80); scene.add(sun);
+  const { root, optional } = buildScene(THREE, { textTexture });
+  root.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
+  scene.add(root);
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.maxPolarAngle = 1.32; controls.minDistance = 10; controls.maxDistance = 280; controls.screenSpacePanning = false;
+  camera.position.set(-37 + 30, 95, 4 + 105); controls.target.set(-37, 0, 4);
+  // nhân vật người chơi
+  const avatar = new THREE.Group(); avatar.visible = false; scene.add(avatar);
+  const blue = new THREE.MeshStandardMaterial({ color: 0x2a7fd0, roughness: .5 });
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.7, 1.4, 4, 12), blue); body.position.y = 1.5; avatar.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 12), new THREE.MeshStandardMaterial({ color: 0xf3d2b3 })); head.position.y = 3.1; avatar.add(head);
+  const pin = new THREE.Mesh(new THREE.ConeGeometry(0.9, 1.6, 16), new THREE.MeshStandardMaterial({ color: 0x2a7fd0, emissive: 0x0b3d78 })); pin.rotation.x = Math.PI; pin.position.y = 5.2; avatar.add(pin);
+  const acc = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0x2a7fd0, transparent: true, opacity: .18, depthWrite: false }));
+  acc.rotation.x = -Math.PI / 2; acc.position.y = 0.2; avatar.add(acc);
+  // điểm dấu ấn: vòng bán kính bắt + cột sáng + thẻ nổi
+  const markers = {};
+  CHECKPOINTS.forEach(cp => {
+    const g = new THREE.Group(); g.position.set(cp.x, 0, cp.z); scene.add(g);
+    const col = new THREE.Color(RARITY[cp.rarity].color);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(CONFIG.CATCH_RADIUS - 0.35, CONFIG.CATCH_RADIUS, 64), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: .55, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.25; g.add(ring);
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(CONFIG.CATCH_RADIUS, 48), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: .0, depthWrite: false }));
+    disc.rotation.x = -Math.PI / 2; disc.position.y = 0.22; g.add(disc);
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 16, 12, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: .35, depthWrite: false }));
+    beam.position.y = 8; g.add(beam);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: markerTexture(cp, false, false), depthTest: false }));
+    spr.scale.set(7, 8.2, 1); spr.position.y = 18; spr.userData.cp = cp; spr.renderOrder = 10; g.add(spr);
+    markers[cp.id] = { g, ring, disc, beam, spr, state: '' };
+  });
+  let follow = false, fly = null;
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  let down = null;
+  renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
+  renderer.domElement.addEventListener('pointerup', e => {
+    if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6) { down = null; return; } down = null;
+    const r = renderer.domElement.getBoundingClientRect();
+    ndc.set((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, camera);
+    const hit = ray.intersectObjects(Object.values(markers).map(m => m.spr))[0];
+    if (hit && !testMode) { const cp = hit.object.userData.cp; toast(S.caught[cp.id] ? `Đã thu thập: ${cp.name}` : `Dấu ấn ẩn tại: ${cp.spot}`); return; }
+    if (testMode) { const p = new THREE.Vector3(); if (ray.ray.intersectPlane(ground, p)) updateMe(p.x, p.z, 4); }
+  });
+  controls.addEventListener('start', () => { follow = false; fly = null; });
+  const clock = new THREE.Clock();
+  T = {
+    renderer, camera, controls, markers, avatar, acc,
+    resize() { const w = box.clientWidth || 1, h = box.clientHeight || 1; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); },
+    flyHome() {
+      if (viewMode === 'me' && me) { follow = true; const t = new THREE.Vector3(me.x, 0, me.z); fly = { t, p: t.clone().add(new THREE.Vector3(10, 52, 42)) }; }
+      else { follow = false; fly = { t: new THREE.Vector3(-37, 0, 4), p: new THREE.Vector3(-7, 95, 109) }; }
+    },
+    loop() {
+      const dt = Math.min(clock.getDelta(), .05), tt = clock.elapsedTime;
+      Object.values(markers).forEach((m, i) => { m.spr.position.y = 18 + Math.sin(tt * 2 + i) * 0.6; });
+      pin.position.y = 5.2 + Math.sin(tt * 3) * 0.3;
+      if (fly) {
+        controls.target.lerp(fly.t, 1 - Math.pow(.001, dt)); camera.position.lerp(fly.p, 1 - Math.pow(.001, dt));
+        if (camera.position.distanceTo(fly.p) < .3) fly = null;
+      } else if (follow && me) {
+        const d = new THREE.Vector3(me.x, 0, me.z).sub(controls.target).multiplyScalar(1 - Math.pow(.02, dt));
+        controls.target.add(d); camera.position.add(d);
+      }
+      controls.update(); renderer.render(scene, camera);
+    },
+    setFollow(v) { follow = v; },
+  };
+  new ResizeObserver(() => T.resize()).observe(box);
+  T.resize();
+}
+function moveAvatar(x, z, acc) {
+  T.avatar.visible = true; T.avatar.position.set(x, 0, z); T.acc.scale.setScalar(Math.max(2, Math.min(acc, 40)));
+  if (!T.started) { T.started = true; viewMode = 'me'; T.flyHome(); }
+}
+function updateMarkers(near) {
+  if (!T) return;
+  CHECKPOINTS.forEach(cp => {
+    const m = T.markers[cp.id], got = !!S.caught[cp.id], isNear = !!near && near.id === cp.id, st = `${got}|${isNear}`;
+    if (m.state === st) return; m.state = st;
+    m.spr.material.map.dispose(); m.spr.material.map = markerTexture(cp, got, isNear); m.spr.material.needsUpdate = true;
+    m.beam.visible = !got; m.disc.material.opacity = isNear ? .22 : 0; m.ring.material.opacity = got ? .2 : .55;
   });
 }
 
@@ -277,13 +420,14 @@ function fitView() {
   }
   $('#zoomB').textContent = viewMode === 'me' ? '⤢ Toàn cảnh' : '◎ Gần tôi';
 }
-$('#zoomB').onclick = () => { if (!me && viewMode === 'all') { toast('Chưa có vị trí của bạn'); return; } viewMode = viewMode === 'me' ? 'all' : 'me'; fitView(); };
+$('#zoomB').onclick = () => { if (!me && viewMode === 'all') { toast('Chưa có vị trí của bạn'); return; } viewMode = viewMode === 'me' ? 'all' : 'me'; fitView(); if (T) T.flyHome(); };
 addEventListener('resize', fitView);
 function setStatus(h) { $('#status').innerHTML = h; }
 function updateMe(x, z, acc) {
   me = { x, z, acc };
   gPlayer.setAttribute('display', ''); gPlayer.setAttribute('transform', `translate(${x} ${z})`);
   gPlayer.querySelector('#acc').setAttribute('r', Math.min(acc, 40));
+  if (T) moveAvatar(x, z, acc);
   if (!autoZoomed && map.clientWidth < map.clientHeight && x > -110 && x < 40 && z > -45 && z < 60) { autoZoomed = true; viewMode = 'me'; }
   fitView();
   const inSite = x > -110 && x < 40 && z > -45 && z < 60;
@@ -319,6 +463,7 @@ async function openEncounter(cp, via) {
   $('#encBottom').innerHTML = `<div class="fact">${cp.fact}</div><button class="btn wide" id="encGo">✨ Thu thập dấu ấn</button>`;
   $('#encGo').onclick = () => askQuestion(cp);
   $('#enc').classList.add('on');
+  if (T) T.renderer.setAnimationLoop(null);
   try {
     encStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
     const v = $('#encVideo'); v.srcObject = encStream; v.style.display = 'block'; await v.play();
@@ -326,6 +471,7 @@ async function openEncounter(cp, via) {
 }
 function closeEncounter() {
   $('#enc').classList.remove('on');
+  if (T && mode3d) T.renderer.setAnimationLoop(T.loop);
   if (encStream) { encStream.getTracks().forEach(t => t.stop()); encStream = null; }
 }
 $('#encClose').onclick = closeEncounter;
