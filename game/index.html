@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-rotate@0.6.2/dist/leaflet-rotate.js"></script>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -55,6 +56,16 @@
   .cpico { display:grid; place-items:center; width:34px; height:34px; border-radius:50%; color:#fff; font-weight:800; font-size:18px; border:3px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.4); }
   .cplbl { background:rgba(255,255,255,.92); border-radius:6px; padding:1px 5px; font-size:10.5px; font-weight:700; white-space:nowrap; transform:translate(-50%, 4px); display:inline-block; }
   #map3d { position:absolute; inset:0; display:none; touch-action:none; z-index:0; }
+  .compass { position:absolute; right:10px; bottom:58px; width:48px; height:48px; border-radius:50%; background:#fff; box-shadow:0 2px 10px rgba(0,0,0,.2); padding:0; z-index:3; display:grid; place-items:center; }
+  .compass svg { width:40px; height:40px; transition:transform .15s linear; }
+  .compass.up { box-shadow:0 0 0 3px #2a7fd0, 0 2px 10px rgba(0,0,0,.2); }
+  .test .compass { bottom:100px; }
+  .hdg { position:absolute; right:64px; bottom:66px; background:rgba(255,255,255,.95); border-radius:16px; padding:5px 10px; font-size:12.5px; font-weight:700; color:#1d4f86; box-shadow:0 2px 8px rgba(0,0,0,.15); z-index:3; white-space:nowrap; display:none; }
+  .hdg.on { display:block; } .test .hdg { bottom:108px; }
+  .meico { position:relative; width:0; height:0; }
+  .meico .cone { position:absolute; left:-40px; top:-40px; width:80px; height:80px; display:none; }
+  .meico.h .cone { display:block; }
+  .meico .dot { position:absolute; left:-9px; top:-9px; width:18px; height:18px; border-radius:50%; background:#2a7fd0; border:3px solid #fff; box-shadow:0 1px 5px rgba(0,0,0,.45); box-sizing:border-box; }
   .status, .zoomb, .modeb, .testbar { z-index:2; }
   #map3d canvas { display:block; width:100%; height:100%; }
   .m3d #map3d { display:block; } .m3d #map { visibility:hidden; }
@@ -149,6 +160,8 @@
     <div id="lmap"></div>
     <div class="demobar" id="demoBar"></div>
     <div id="map3d"></div>
+    <button class="compass" id="compass" aria-label="La bàn — chạm để xoay bản đồ theo hướng điện thoại"><svg viewBox="-20 -20 40 40" id="needle"><circle r="18" fill="#fff" stroke="#d6dde4" stroke-width="1"/><path d="M0 -15 L5 0 L-5 0Z" fill="#e0352b"/><path d="M0 15 L5 0 L-5 0Z" fill="#9aa5b1"/><circle r="1.8" fill="#fff"/><text y="-8.5" font-size="0" fill="#fff"></text><text x="0" y="-16.2" font-size="5.2" text-anchor="middle" font-weight="800" fill="#e0352b" dy="-0.4">B</text></svg></button>
+    <div class="hdg" id="hdg"></div>
     <button class="zoomb" id="zoomB">◎ Gần tôi</button>
     <button class="modeb" id="modeB">🗺 Bản đồ 2D</button>
     <div class="testbar">🧪 Chế độ thử: chạm vào bản đồ để giả lập vị trí của bạn.</div>
@@ -179,7 +192,7 @@
 <canvas class="confetti" id="confetti"></canvas>
 
 <script type="module">
-import { CONFIG, CHECKPOINTS, ICONS, RARITY, PHOTOS, latLonToXZ } from './data.js?v=4';
+import { CONFIG, CHECKPOINTS, ICONS, RARITY, PHOTOS, GEO, latLonToXZ } from './data.js?v=5';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildScene } from '../scene.js?v=7';
@@ -188,20 +201,26 @@ const $ = s => document.querySelector(s);
 // ---------- CHẾ ĐỘ DEMO: ?demo=lat,lon (hoặc ?demo=here) &r=bán kính &s=khoảng cách ----------
 const QP = new URLSearchParams(location.search);
 const DEMO = QP.has('demo') ? (() => { const v = QP.get('demo') || 'here'; const [la, lo] = v.split(',').map(Number);
-  return { here: !(isFinite(la) && isFinite(lo)), lat: la, lon: lo, r: +(QP.get('r') || 5), s: +(QP.get('s') || 10) }; })() : null;
+  return { here: !(isFinite(la) && isFinite(lo)), lat: la, lon: lo, r: +(QP.get('r') || 5), s: +(QP.get('s') || 10), rot: +(QP.get('rot') || 0) }; })() : null;
 const LS = DEMO ? 'nvhtn-hanhtrinh-demo' : 'nvhtn-hanhtrinh-v1';
 if (DEMO) { CONFIG.CATCH_RADIUS = DEMO.r; CONFIG.SHEET_API = ''; document.title = 'DEMO – ' + document.title; }
 const D_MLON = lat => 111320 * Math.cos(lat * Math.PI / 180);
 let demoC = null; // tâm demo {lat, lon}
 const HUONG8 = ['Bắc', 'Đông Bắc', 'Đông', 'Đông Nam', 'Nam', 'Tây Nam', 'Tây', 'Tây Bắc'];
+// hướng các trục toạ độ x, z (độ, tính từ Bắc theo chiều kim đồng hồ)
+const FR = DEMO ? { xAz: 90, zAz: 180 } : { xAz: GEO.axAz, zAz: GEO.azAz };
+const RAD = Math.PI / 180, norm = a => ((a % 360) + 360) % 360;
+const azToXZ = a => [Math.cos((a - FR.xAz) * RAD), Math.cos((a - FR.zAz) * RAD)];
+const xzToAz = (vx, vz) => norm(Math.atan2(vx * Math.sin(FR.xAz * RAD) + vz * Math.sin(FR.zAz * RAD), vx * Math.cos(FR.xAz * RAD) + vz * Math.cos(FR.zAz * RAD)) / RAD);
 function placeDemo(lat, lon) {
   demoC = { lat, lon };
   const grid = [[0, 0], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]]; // [Đông, Bắc]
   CHECKPOINTS.forEach((cp, i) => {
-    const [dx, dy] = grid[i], e = dx * DEMO.s, n = dy * DEMO.s;
+    const [gx, gy] = grid[i], th = DEMO.rot * Math.PI / 180; // xoay lưới theo chiều kim đồng hồ
+    const e = (gx * Math.cos(th) + gy * Math.sin(th)) * DEMO.s, n = (-gx * Math.sin(th) + gy * Math.cos(th)) * DEMO.s, dx = e, dy = n;
     cp.x = e; cp.z = -n; cp.lat = lat + n / 110574; cp.lon = lon + e / D_MLON(lat);
     if (i === 0) cp.spot = 'Điểm giữa (chỗ bắt đầu)';
-    else { const az = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360; cp.spot = `${HUONG8[Math.round(az / 45) % 8]}, cách điểm giữa ${Math.round(Math.hypot(e, n))} m`; }
+    else { const az = (Math.atan2(e, n) * 180 / Math.PI + 360) % 360; cp.spot = `${HUONG8[Math.round(az / 45) % 8]}, cách điểm giữa ${Math.round(Math.hypot(e, n))} m`; }
   });
 }
 // toạ độ GPS → mét (demo: x = Đông, z = −Bắc)
@@ -231,7 +250,7 @@ function enterPlay() {
   show('play'); renderHud();
   if (DEMO) {
     document.querySelector('.mapwrap').classList.add('demo');
-    const c = S.demoC || (!DEMO.here ? { lat: DEMO.lat, lon: DEMO.lon } : null);
+    const c = !DEMO.here ? { lat: DEMO.lat, lon: DEMO.lon } : S.demoC;
     if (c) { placeDemo(c.lat, c.lon); S.demoC = c; save(); initLeaflet(); }
     $('#demoBar').innerHTML = `🧪 <b>Bản demo</b> · 9 điểm cách nhau ${DEMO.s} m · bắt trong ${DEMO.r} m · không ghi bảng xếp hạng` + (c ? '' : ' · đang chờ GPS để đặt điểm quanh bạn…') + ` · <a href="#" id="demoReset">Làm lại</a>`;
     $('#demoReset').onclick = e => { e.preventDefault(); try { localStorage.removeItem(LS); } catch { } location.reload(); };
@@ -244,9 +263,9 @@ let LM = null, lmMe = null, lmAcc = null, lmFollow = true, lmMarks = {};
 const xzToLL = (x, z) => [demoC.lat - z / 110574, demoC.lon + x / D_MLON(demoC.lat)];
 function initLeaflet() {
   if (LM || !window.L) return;
-  LM = L.map('lmap', { zoomControl: false, attributionControl: true, maxZoom: 21 }).setView([demoC.lat, demoC.lon], 20);
-  const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 19, maxZoom: 21, attribution: 'Ảnh vệ tinh © Esri, Maxar' }).addTo(LM);
-  const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 21, attribution: '© OpenStreetMap' });
+  LM = L.map('lmap', { zoomControl: false, attributionControl: true, maxZoom: 22, rotate: true, rotateControl: false, touchRotate: true, bearing: 0 }).setView([demoC.lat, demoC.lon], 21);
+  const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 19, maxZoom: 22, attribution: 'Ảnh vệ tinh © Esri, Maxar' }).addTo(LM);
+  const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 22, attribution: '© OpenStreetMap' });
   L.control.layers({ 'Vệ tinh': sat, 'Bản đồ': osm }, null, { position: 'bottomleft' }).addTo(LM);
   LM.on('dragstart', () => { lmFollow = false; $('#zoomB').textContent = '◎ Gần tôi'; });
   LM.on('click', e => { if (testMode) { const { x, z } = toXZ(e.latlng.lat, e.latlng.lng); updateMe(x, z, 3); } });
@@ -258,7 +277,8 @@ function initLeaflet() {
     lmMarks[cp.id] = { ring, mk, st: '' };
   });
   lmAcc = L.circle([demoC.lat, demoC.lon], { radius: 5, color: '#2a7fd0', weight: 1, fillOpacity: 0.15 });
-  lmMe = L.circleMarker([demoC.lat, demoC.lon], { radius: 8, color: '#fff', weight: 3, fillColor: '#2a7fd0', fillOpacity: 1 });
+  lmMe = L.marker([demoC.lat, demoC.lon], { interactive: false, zIndexOffset: 1000, icon: L.divIcon({ className: '', iconSize: [0, 0], html: `<div class="meico" id="lmMeIco">${CONE_SVG}<div class="dot"></div></div>` }) });
+  LM.on('rotate', renderCompass);
   updateLeafletMarkers(nearCp);
   setTimeout(() => LM.invalidateSize(), 100);
 }
@@ -276,7 +296,67 @@ function moveLeafletMe(x, z, acc) {
   if (!LM.hasLayer(lmMe)) { lmAcc.addTo(LM); lmMe.addTo(LM); }
   lmMe.setLatLng(ll); lmAcc.setLatLng(ll); lmAcc.setRadius(Math.min(acc, 60));
   if (lmFollow) LM.panTo(ll, { animate: true });
+  renderCompass();
 }
+
+// ---------- LA BÀN & HƯỚNG ĐIỆN THOẠI ----------
+const CONE_SVG = `<svg class="cone" viewBox="-40 -40 80 80"><defs><radialGradient id="lcg" cx="0" cy="0" r="40" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2a7fd0" stop-opacity=".85"/><stop offset="1" stop-color="#2a7fd0" stop-opacity="0"/></radialGradient></defs><path d="M0 0 L-23 -32.6 A40 40 0 0 1 23 -32.6 Z" fill="url(#lcg)"/></svg>`;
+let heading = null, hdgSrc = '', hdgUp = false, camAim = null, compassOn = false, lastOri = 0;
+function setHeading(h, src, snap) {
+  h = norm(h);
+  if (heading == null || snap) heading = h;
+  else { const d = ((h - heading + 540) % 360) - 180; if (Math.abs(d) < 0.4) return; heading = norm(heading + d * 0.3); }
+  hdgSrc = src; renderHeading();
+}
+function onOri(e) {
+  let h = null;
+  if (e.webkitCompassHeading != null && !isNaN(e.webkitCompassHeading)) h = e.webkitCompassHeading;   // iPhone
+  else if (e.absolute && e.alpha != null) h = 360 - e.alpha;                                             // Android
+  else return;
+  const so = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+  lastOri = Date.now(); setHeading(h + so, 'compass');
+}
+function startCompass() {
+  if (compassOn) return Promise.resolve(true);
+  const attach = () => { compassOn = true; if ('ondeviceorientationabsolute' in window) addEventListener('deviceorientationabsolute', onOri); else addEventListener('deviceorientation', onOri); return true; };
+  const DOE = window.DeviceOrientationEvent;
+  if (DOE && typeof DOE.requestPermission === 'function') return DOE.requestPermission().then(r => r === 'granted' ? attach() : false).catch(() => false);
+  return Promise.resolve(DOE ? attach() : false);
+}
+function viewUpAz() {   // hướng (độ) đang nằm ở phía trên màn hình
+  if (DEMO) return LM ? norm(-LM.getBearing()) : 0;
+  if (mode3d && T) return T.upAz();
+  return xzToAz(0, -1);
+}
+function renderCompass() {
+  const up = viewUpAz();
+  $('#needle').style.transform = `rotate(${-up}deg)`;
+  if (DEMO) { const ico = document.getElementById('lmMeIco'); if (ico) { ico.classList.toggle('h', heading != null); if (heading != null) ico.querySelector('.cone').style.transform = `rotate(${heading - up}deg)`; } }
+}
+function renderHeading() {
+  if (hdgUp && heading != null) { if (DEMO && LM) LM.setBearing(-heading); else if (mode3d && T) camAim = heading; }
+  const sc = document.getElementById('svgCone');
+  if (sc && heading != null) { sc.setAttribute('display', ''); sc.setAttribute('transform', `rotate(${heading - xzToAz(0, -1)})`); }
+  renderCompass();
+  const hd = $('#hdg');
+  if (heading != null) { hd.classList.add('on'); hd.textContent = `${hdgSrc === 'compass' ? '🧭' : '🚶'} ${HUONG8[Math.round(heading / 45) % 8]} · ${Math.round(heading)}°`; }
+}
+function setHdgUp(on, quiet) {
+  hdgUp = on; $('#compass').classList.toggle('up', on);
+  if (on) renderHeading();
+  else { if (DEMO && LM) LM.setBearing(0); else if (mode3d && T && !quiet) camAim = 0; }
+  if (!quiet) toast(on ? 'Bản đồ xoay theo hướng điện thoại' : 'Bản đồ hướng Bắc lên trên');
+}
+$('#compass').onclick = async () => {
+  const ok = await startCompass();
+  if (hdgUp) { setHdgUp(false); return; }
+  if (!DEMO && !mode3d) { toast(heading != null ? `Điện thoại đang hướng về ${HUONG8[Math.round(heading / 45) % 8]} — chuyển sang 3D để xoay bản đồ theo hướng` : 'Chuyển sang 3D để xoay bản đồ theo hướng'); return; }
+  if (heading == null) { toast(ok ? 'Đang chờ la bàn… thử xoay nhẹ điện thoại' : 'Máy không có la bàn — hướng sẽ lấy theo hướng bạn di chuyển'); if (DEMO && LM) LM.setBearing(0); else if (T) camAim = 0; setTimeout(() => { if (heading != null && !hdgUp) setHdgUp(true); }, 1500); return; }
+  setHdgUp(true);
+};
+// Android: không cần xin quyền; iPhone: xin quyền khi người chơi chạm nút
+startCompass();
+addEventListener('touchend', function once() { if (!compassOn) startCompass(); removeEventListener('touchend', once); }, { passive: true });
 
 // ---------- HUD ----------
 function renderHud() {
@@ -321,6 +401,9 @@ function drawMap() {
   gCps = el('g', {});
   gPlayer = el('g', { display: 'none' });
   el('circle', { r: 6, fill: '#2a7fd0', opacity: .15, id: 'acc' }, gPlayer);
+  { const defs = el('defs', {}), rg = el('radialGradient', { id: 'cg', cx: 0, cy: 0, r: 14, gradientUnits: 'userSpaceOnUse' }, defs);
+    el('stop', { offset: 0, 'stop-color': '#2a7fd0', 'stop-opacity': .8 }, rg); el('stop', { offset: 1, 'stop-color': '#2a7fd0', 'stop-opacity': 0 }, rg);
+    el('path', { id: 'svgCone', d: 'M0 0 L-8.1 -11.3 A14 14 0 0 1 8.1 -11.3 Z', fill: 'url(#cg)', display: 'none' }, gPlayer); }
   el('circle', { r: 1.9, fill: '#2a7fd0', stroke: '#fff', 'stroke-width': .8 }, gPlayer);
   drawCps();
 }
@@ -350,6 +433,7 @@ function setMode(on) {
   $('#modeB').textContent = on ? '🗺 Bản đồ 2D' : '🧊 Mô hình 3D';
   if (on) { try { if (!T) init3D(); T.resize(); T.renderer.setAnimationLoop(T.loop); updateMarkers(nearCp); if (me) moveAvatar(me.x, me.z, me.acc); } catch (e) { console.error(e); toast('Máy không hỗ trợ 3D — dùng bản đồ 2D'); setMode(false); } }
   else if (T) T.renderer.setAnimationLoop(null);
+  renderCompass();
 }
 $('#modeB').onclick = () => setMode(!mode3d);
 function textTexture(text, w, h, style = {}) {
@@ -398,6 +482,15 @@ function init3D() {
   const pin = new THREE.Mesh(new THREE.ConeGeometry(0.9, 1.6, 16), new THREE.MeshStandardMaterial({ color: 0x2a7fd0, emissive: 0x0b3d78 })); pin.rotation.x = Math.PI; pin.position.y = 5.2; avatar.add(pin);
   const acc = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0x2a7fd0, transparent: true, opacity: .18, depthWrite: false }));
   acc.rotation.x = -Math.PI / 2; acc.position.y = 0.2; avatar.add(acc);
+  // hình nón hướng nhìn (giống Google Maps)
+  const cc = document.createElement('canvas'); cc.width = cc.height = 256;
+  { const g = cc.getContext('2d'), gr = g.createRadialGradient(128, 128, 6, 128, 128, 128);
+    gr.addColorStop(0, 'rgba(42,127,208,.85)'); gr.addColorStop(1, 'rgba(42,127,208,0)');
+    g.fillStyle = gr; g.beginPath(); g.moveTo(128, 128); g.arc(128, 128, 128, -Math.PI / 2 - 0.62, -Math.PI / 2 + 0.62); g.closePath(); g.fill(); }
+  const coneTex = new THREE.CanvasTexture(cc); coneTex.colorSpace = THREE.SRGBColorSpace;
+  const cone = new THREE.Group(); cone.visible = false; avatar.add(cone);
+  const coneM = new THREE.Mesh(new THREE.PlaneGeometry(22, 22), new THREE.MeshBasicMaterial({ map: coneTex, transparent: true, depthWrite: false }));
+  coneM.rotation.x = -Math.PI / 2; coneM.position.y = 0.3; cone.add(coneM);
   // điểm dấu ấn: vòng bán kính bắt + cột sáng + thẻ nổi
   const markers = {};
   CHECKPOINTS.forEach(cp => {
@@ -425,7 +518,7 @@ function init3D() {
     if (hit && !testMode) { const cp = hit.object.userData.cp; toast(S.caught[cp.id] ? `Đã thu thập: ${cp.name}` : `Dấu ấn ẩn tại: ${cp.spot}`); return; }
     if (testMode) { const p = new THREE.Vector3(); if (ray.ray.intersectPlane(ground, p)) updateMe(p.x, p.z, 4); }
   });
-  controls.addEventListener('start', () => { follow = false; fly = null; });
+  controls.addEventListener('start', () => { follow = false; fly = null; if (hdgUp) setHdgUp(false, true); });
   const clock = new THREE.Clock();
   T = {
     renderer, camera, controls, markers, avatar, acc,
@@ -445,9 +538,20 @@ function init3D() {
         const d = new THREE.Vector3(me.x, 0, me.z).sub(controls.target).multiplyScalar(1 - Math.pow(.02, dt));
         controls.target.add(d); camera.position.add(d);
       }
+      // xoay camera về hướng mong muốn (theo hướng điện thoại / về hướng Bắc)
+      if (camAim != null && !fly) {
+        const off = camera.position.clone().sub(controls.target), cur = xzToAz(-off.x, -off.z);
+        const dA = ((camAim - cur + 540) % 360) - 180, step = dA * (1 - Math.pow(.005, dt));
+        off.applyAxisAngle(new THREE.Vector3(0, 1, 0), -step * RAD);
+        camera.position.copy(controls.target).add(off);
+        if (!hdgUp && Math.abs(dA) < 0.5) camAim = null;
+      }
+      if (heading != null) { const [vx, vz] = azToXZ(heading); cone.visible = true; cone.rotation.y = Math.atan2(-vx, -vz); } else cone.visible = false;
+      if (mode3d) renderCompass();
       controls.update(); renderer.render(scene, camera);
     },
     setFollow(v) { follow = v; },
+    upAz() { const f = controls.target.clone().sub(camera.position); return xzToAz(f.x, f.z); },
   };
   new ResizeObserver(() => T.resize()).observe(box);
   T.resize();
@@ -477,6 +581,7 @@ function startGPS() {
   watchId = navigator.geolocation.watchPosition(p => {
     if (DEMO && !demoC) { placeDemo(p.coords.latitude, p.coords.longitude); S.demoC = demoC; save(); initLeaflet(); }
     const { x, z } = toXZ(p.coords.latitude, p.coords.longitude);
+    if (hdgSrc !== 'compass' && p.coords.heading != null && !isNaN(p.coords.heading) && p.coords.speed > 0.6) setHeading(p.coords.heading, 'gps', true);
     updateMe(x, z, p.coords.accuracy);
   }, err => {
     setStatus(err.code === 1 ? 'Bạn chưa cho phép truy cập vị trí. Hãy bật quyền vị trí cho trang này, hoặc dùng <b>Quét QR</b>.' : 'Chưa lấy được vị trí GPS — thử ra chỗ thoáng, hoặc dùng <b>Quét QR</b>.');
@@ -507,6 +612,7 @@ $('#zoomB').onclick = () => { if (DEMO && LM) { lmFollow = !lmFollow; if (lmFoll
 addEventListener('resize', fitView);
 function setStatus(h) { $('#status').innerHTML = h; }
 function updateMe(x, z, acc) {
+  if (me && hdgSrc !== 'compass' && Math.hypot(x - me.x, z - me.z) > 1.5) setHeading(xzToAz(x - me.x, z - me.z), 'move', true);
   me = { x, z, acc };
   if (gPlayer) { gPlayer.setAttribute('display', ''); gPlayer.setAttribute('transform', `translate(${x} ${z})`);
   gPlayer.querySelector('#acc').setAttribute('r', Math.min(acc, 40)); }

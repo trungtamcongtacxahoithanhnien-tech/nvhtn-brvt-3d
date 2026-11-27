@@ -38,7 +38,7 @@ Sheet sẽ có tab `BangXepHang` với: họ tên, đơn vị, số điện tho�
 Màn hình chơi dùng mô hình 3D Nhà Văn hóa (cùng mô hình ở trang chính). Người chơi là nhân vật màu xanh; mỗi dấu ấn là một cột sáng có thẻ “?”. Kéo để xoay, chụm 2 ngón để phóng to. Nút **🗺 Bản đồ 2D** chuyển sang bản đồ phẳng cho máy yếu.
 
 ## 6. Bản demo (thử ở bất kỳ đâu)
-- Demo tại Trung tâm CTXH Thanh niên TP (5 Đinh Tiên Hoàng): https://trungtamcongtacxahoithanhnien-tech.github.io/nvhtn-brvt-3d/game/?demo=10.78722,106.70038
+- Demo tại khuôn viên tòa nhà trước của Trung tâm CTXH Thanh niên TP (5 Đinh Tiên Hoàng): https://trungtamcongtacxahoithanhnien-tech.github.io/nvhtn-brvt-3d/game/?demo=10.78736,106.70059&s=7&r=5&rot=45
 - Demo tự đặt điểm quanh chỗ bạn đứng: …/game/?demo=here
-- Tùy chọn: `&r=5` bán kính bắt (m), `&s=10` khoảng cách giữa các điểm (m). Thêm `#test` để chạm bản đồ giả lập vị trí.
+- Tùy chọn: `&r=5` bán kính bắt (m), `&s=10` khoảng cách giữa các điểm (m), `&rot=45` xoay lưới (độ, theo chiều kim đồng hồ) cho thẳng hàng với đường/tòa nhà. Thêm `#test` để chạm bản đồ giả lập vị trí.
 - Bản demo dùng bản đồ vệ tinh thật, lưu tiến độ riêng và **không** ghi vào bảng xếp hạng. Bấm “Làm lại” trên thanh demo để chơi lại từ đầu.
