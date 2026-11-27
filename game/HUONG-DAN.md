@@ -2,7 +2,7 @@
 
 Link chơi: https://trungtamcongtacxahoithanhnien-tech.github.io/nvhtn-brvt-3d/game/
 Trang in mã QR: https://trungtamcongtacxahoithanhnien-tech.github.io/nvhtn-brvt-3d/game/qr.html
-Chế độ thử (chạm bản đồ để giả lập vị trí, dùng khi kiểm tra tại bàn): thêm `#test` vào cuối link chơi.
+Chế độ thử dành cho ban tổ chức (chạm bản đồ để giả lập vị trí, kiểm tra tại bàn): thêm `?test=MÃ_NHÂN_VIÊN` vào link chơi (mã nhân viên là STAFF_PIN trong `data.js`). Người chơi thường không dùng được chế độ này.
 
 ## 1. Trước sự kiện
 1. **Đổi mã PIN nhân viên**: mở `game/data.js`, sửa `STAFF_PIN: '2026'` thành mã riêng. Mã này nằm trong mã nguồn công khai, nên chỉ dùng để chống bấm nhầm, không phải bảo mật cao — đổi mã cho từng sự kiện.
@@ -34,7 +34,7 @@ Sheet sẽ có tab `BangXepHang` với: họ tên, đơn vị, số điện tho�
 - Gợi ý cho biết hướng và khoảng cách; mũi tên ◀ ▶ ở mép màn hình chỉ cần xoay bên nào. Thấy dấu ấn thì **chạm vào nó** rồi trả lời câu hỏi.
 - Máy không có la bàn: vuốt ngang màn hình để nhìn quanh. Quét QR thì dấu ấn hiện ngay, không cần tìm.
 - **Quét QR = tự chỉnh GPS:** khi người chơi quét QR tại một điểm, game biết chính xác họ đang đứng đó nên tự bù độ lệch GPS cho quãng đi tiếp theo. Nên đặt QR ở các điểm trong nhà/dưới mái che (GPS yếu), và ở cổng vào để người chơi quét đầu tiên.
-- Nút **📍 Sửa vị trí**: chạm vào chỗ mình đang đứng trên bản đồ để tự chỉnh bằng tay; bấm "bỏ" để quay về GPS gốc. Chấm xám trên bản đồ là GPS gốc chưa lọc.
+- Không có nút chỉnh vị trí bằng tay (tránh gian lận) — chỉ quét QR mới chỉnh được. Chấm xám trên bản đồ là GPS gốc chưa lọc.
 - Nút la bàn (góc phải): chạm để bản đồ xoay theo hướng điện thoại, chạm lần nữa để về hướng Bắc. iPhone cần bấm **Cho phép** khi được hỏi quyền chuyển động & hướng.
 
 ## 4. Lưu ý

@@ -172,7 +172,6 @@
     <div id="map3d"></div>
     <button class="compass" id="compass" aria-label="La bàn — chạm để xoay bản đồ theo hướng điện thoại"><svg viewBox="-20 -20 40 40" id="needle"><circle r="18" fill="#fff" stroke="#d6dde4" stroke-width="1"/><path d="M0 -15 L5 0 L-5 0Z" fill="#e0352b"/><path d="M0 15 L5 0 L-5 0Z" fill="#9aa5b1"/><circle r="1.8" fill="#fff"/><text y="-8.5" font-size="0" fill="#fff"></text><text x="0" y="-16.2" font-size="5.2" text-anchor="middle" font-weight="800" fill="#e0352b" dy="-0.4">B</text></svg></button>
     <div class="hdg" id="hdg"></div>
-    <button class="calibb" id="calibB">📍 Sửa vị trí</button>
     <button class="zoomb" id="zoomB">◎ Gần tôi</button>
     <button class="modeb" id="modeB">🗺 Bản đồ 2D</button>
     <div class="testbar">🧪 Chế độ thử: chạm vào bản đồ để giả lập vị trí của bạn.</div>
@@ -327,12 +326,12 @@ function initLeaflet() {
   gg.addTo(LM);
   L.control.layers({ 'Google vệ tinh': gg, 'Google bản đồ': ggm, 'Esri vệ tinh': sat, 'OpenStreetMap': osm }, null, { position: 'bottomleft' }).addTo(LM);
   LM.on('dragstart', () => { lmFollow = false; $('#zoomB').textContent = '◎ Gần tôi'; });
-  LM.on('click', e => { if (calibMode) { const { x, z } = toXZ(e.latlng.lat, e.latlng.lng); calibAt(x, z); return; } if (testMode) { const { x, z } = toXZ(e.latlng.lat, e.latlng.lng); updateMe(x, z, 3); } });
+  LM.on('click', e => { if (testMode) { const { x, z } = toXZ(e.latlng.lat, e.latlng.lng); updateMe(x, z, 3); } });
   CHECKPOINTS.forEach(cp => {
     const col = RARITY[cp.rarity].color;
     const ring = L.circle([cp.lat, cp.lon], { radius: CONFIG.CATCH_RADIUS, color: col, weight: 2, dashArray: '4 4', fillColor: col, fillOpacity: 0.08, interactive: false }).addTo(LM);
     const mk = L.marker([cp.lat, cp.lon], { icon: L.divIcon({ className: '', iconSize: [34, 34], iconAnchor: [17, 17], html: '' }) }).addTo(LM);
-    mk.on('click', e => { if (calibMode) { const ll = LM.mouseEventToLatLng(e.originalEvent), q = toXZ(ll.lat, ll.lng); calibAt(q.x, q.z); return; } toast(S.caught[cp.id] ? `Đã thu thập: ${cp.name}` : `Dấu ấn ẩn tại: ${cp.spot}`); });
+    mk.on('click', () => { toast(S.caught[cp.id] ? `Đã thu thập: ${cp.name}` : `Dấu ấn ẩn tại: ${cp.spot}`); });
     lmMarks[cp.id] = { ring, mk, st: '' };
   });
   lmAcc = L.circle([demoC.lat, demoC.lon], { radius: 5, color: '#2a7fd0', weight: 1, fillOpacity: 0.15 });
@@ -406,12 +405,6 @@ $('#compass').onclick = async () => {
   if (heading == null) { toast(ok ? 'Đang chờ la bàn… thử xoay nhẹ điện thoại' : 'Máy không có la bàn — hướng sẽ lấy theo hướng bạn di chuyển'); if (DEMO && LM) { curBearing = 0; LM.setBearing(0); } else if (T) camAim = 0; setTimeout(() => { if (heading != null && !hdgUp) setHdgUp(true); }, 1500); return; }
   setHdgUp(true);
 };
-$('#calibB').onclick = () => {
-  if (calib) { calib = null; try { localStorage.removeItem(LS + '-calib'); } catch { } kf = null; renderCalib(); toast('Đã bỏ chỉnh vị trí — dùng GPS gốc'); return; }
-  calibMode = !calibMode; $('#calibB').classList.toggle('on', calibMode);
-  $('#calibB').textContent = calibMode ? '👆 Chạm vào chỗ bạn đang đứng' : '📍 Sửa vị trí';
-  if (calibMode) { lmFollow = false; toast('Chạm lên bản đồ đúng chỗ bạn đang đứng'); }
-};
 // Android: không cần xin quyền; iPhone: xin quyền khi người chơi chạm nút
 startCompass();
 setTimeout(startMotion);
@@ -419,7 +412,6 @@ addEventListener('touchend', function once() { if (!compassOn) startCompass(); i
 
 // ---------- HUD ----------
 function renderHud() {
-  if ($('#calibB') && !calibMode) renderCalib();
   $('#hName').textContent = S.name;
   $('#hSub').textContent = `${caughtCount()}/${CHECKPOINTS.length} dấu ấn` + (S.unit ? ` · ${S.unit}` : '');
   $('#hScore').textContent = `${S.score} điểm`;
@@ -577,7 +569,6 @@ function init3D() {
     ndc.set((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, camera);
     const hit = ray.intersectObjects(Object.values(markers).map(m => m.spr))[0];
     if (hit && !testMode) { const cp = hit.object.userData.cp; toast(S.caught[cp.id] ? `Đã thu thập: ${cp.name}` : `Dấu ấn ẩn tại: ${cp.spot}`); return; }
-    if (calibMode) { const p = new THREE.Vector3(); if (ray.ray.intersectPlane(ground, p)) calibAt(p.x, p.z); return; }
     if (testMode) { const p = new THREE.Vector3(); if (ray.ray.intersectPlane(ground, p)) updateMe(p.x, p.z, 4); }
   });
   controls.addEventListener('start', () => { follow = false; fly = null; if (hdgUp) setHdgUp(false, true); });
@@ -634,23 +625,16 @@ function updateMarkers(near) {
 
 // ---------- GPS ----------
 let me = null, nearCp = null, watchId = null;
-const testMode = /(^|[#&])test\b/.test(location.hash) || new URLSearchParams(location.search).has('test');
+const testMode = (DEMO && /(^|[#&])test\b/.test(location.hash)) || new URLSearchParams(location.search).get('test') === CONFIG.STAFF_PIN;
 if (testMode) document.body.classList.add('test');
 // ---- lọc vị trí GPS (Kalman) + cảm biến bước đi: đứng yên thì chấm không chạy lung tung ----
-let calib = null, calibMode = false, lastRaw = null;
+let calib = null, lastRaw = null;   // chỉnh lệch GPS chỉ bằng cách quét QR tại điểm (không cho chỉnh tay)
 try { const c = JSON.parse(localStorage.getItem(LS + '-calib') || 'null'); if (c && Date.now() - c.t < 3 * 3600e3) calib = c; } catch { }
 let rawMk = null;
 function showRaw(x, z) {   // chấm xám: vị trí GPS gốc (chưa lọc) để so với chấm xanh
   if (LM) { const ll = xzToLL(x, z); if (!rawMk) rawMk = L.circleMarker(ll, { radius: 5, color: '#fff', weight: 2, fillColor: '#6b7480', fillOpacity: .9, interactive: false }).addTo(LM); else rawMk.setLatLng(ll); }
   if (T) { if (!T.rawDot) { T.rawDot = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.15, 16), new THREE.MeshBasicMaterial({ color: 0x6b7480 })); T.avatar.parent.add(T.rawDot); } T.rawDot.position.set(x, 0.3, z); }
   const sr = document.getElementById('svgRaw'); if (sr) { sr.setAttribute('display', ''); sr.setAttribute('cx', x); sr.setAttribute('cy', z); }
-}
-function calibAt(x, z) {   // người chơi chạm vào chỗ mình đang đứng → bù độ lệch GPS
-  calibMode = false; $('#calibB').classList.remove('on');
-  if (!lastRaw && !testMode) { toast('Chưa có tín hiệu GPS để chỉnh'); return; }
-  const r = lastRaw || me; setCalib(x - r.x, z - r.z, { x, z, id: null }, 'tap');
-  if (calib) toast(`Đã chỉnh vị trí (lệch ${Math.round(Math.hypot(calib.dx, calib.dz))} m). Game sẽ bù lệch này khi bạn di chuyển.`);
-  renderCalib();
 }
 // Quét QR tại một điểm = biết chính xác người chơi đang đứng ở đó → tự chỉnh GPS theo điểm này
 let pendingAnchor = null;
@@ -668,7 +652,7 @@ function setCalib(dx, dz, cp, how) {
   renderCalib();
   if (how === 'qr') setTimeout(() => toast(`📍 Đã tự chỉnh vị trí theo QR điểm ${cp.id}${Math.hypot(dx, dz) >= 2 ? ` (GPS lệch ${Math.round(Math.hypot(dx, dz))} m)` : ''}`), 900);
 }
-function renderCalib() { $('#calibB').textContent = calib ? `📍 ${calib.cp ? 'Theo QR điểm ' + calib.cp : 'Đã chỉnh'} · lệch ${Math.round(Math.hypot(calib.dx, calib.dz))} m · bỏ` : '📍 Sửa vị trí'; }
+function renderCalib() { }
 let kf = null, motionOn = false, accBuf = [], lastStepMove = 0;
 function onMotion(e) {
   const a = e.accelerationIncludingGravity; if (!a || a.x == null) return;
@@ -718,10 +702,9 @@ function startGPS() {
   }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
 }
 map.addEventListener('click', e => {
-  if (!testMode && !calibMode) return;
+  if (!testMode) return;
   const pt = map.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
   const p = pt.matrixTransform(map.getScreenCTM().inverse());
-  if (calibMode) { calibAt(p.x, p.y); return; }
   updateMe(p.x, p.y, 4);
 });
 // khung nhìn bản đồ: toàn cảnh hoặc phóng gần vị trí người chơi
