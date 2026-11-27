@@ -29,6 +29,12 @@ Sheet sẽ có tab `BangXepHang` với: họ tên, đơn vị, số điện tho�
 - Thu thập đủ 9 dấu ấn → màn hình đổi quà có **mã 6 ký tự** và **đồng hồ chạy** (để nhận biết ảnh chụp màn hình). Nhân viên nhập PIN trên máy người chơi → hiện dấu "ĐÃ NHẬN QUÀ", mỗi máy chỉ nhận một lần.
 - Xếp hạng: điểm cao hơn đứng trên; bằng điểm thì ai hoàn thành nhanh hơn đứng trên.
 
+### Bắt dấu ấn qua camera
+- Vào vùng phát hiện (vòng tròn), bấm **Bắt dấu ấn** → camera bật lên. Dấu ấn **ẩn ở một điểm trong vùng** (mỗi người chơi một vị trí khác nhau).
+- Gợi ý cho biết hướng và khoảng cách; mũi tên ◀ ▶ ở mép màn hình chỉ cần xoay bên nào. Thấy dấu ấn thì **chạm vào nó** rồi trả lời câu hỏi.
+- Máy không có la bàn: vuốt ngang màn hình để nhìn quanh. Quét QR thì dấu ấn hiện ngay, không cần tìm.
+- Nút la bàn (góc phải): chạm để bản đồ xoay theo hướng điện thoại, chạm lần nữa để về hướng Bắc. iPhone cần bấm **Cho phép** khi được hỏi quyền chuyển động & hướng.
+
 ## 4. Lưu ý
 - Tiến độ lưu trên trình duyệt của người chơi; xóa dữ liệu trình duyệt sẽ mất tiến độ.
 - Một người có thể chơi lại bằng trình duyệt khác — đối chiếu số điện thoại trong Sheet khi trao giải lớn.

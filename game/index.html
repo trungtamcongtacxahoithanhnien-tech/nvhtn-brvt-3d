@@ -112,6 +112,14 @@
   .float.caught { animation:catchAnim .7s forwards; }
   @keyframes catchAnim { to { transform:translate(-50%,40vh) scale(.1); opacity:0; } }
   .enc-bottom { position:absolute; left:0; right:0; bottom:0; background:#fff; border-radius:20px 20px 0 0; padding:16px 16px calc(16px + env(safe-area-inset-bottom)); z-index:3; }
+  #enc.seek .float { width:min(44vw,190px); transition:none; }
+  #enc.seek .float .nm, #enc.seek .float .rr, #enc.seek .float .cr { display:none; }
+  #enc.seek .float .glow { padding:6px; cursor:pointer; }
+  #enc .float.found { transition:left .45s, top .45s, width .45s; }
+  .reticle { display:none; position:absolute; left:50%; top:42%; width:120px; height:120px; margin:-60px 0 0 -60px; border:3px dashed rgba(255,255,255,.85); border-radius:50%; z-index:1; pointer-events:none; }
+  #enc.seek .reticle { display:block; }
+  .edge { display:none; position:absolute; top:42%; transform:translateY(-50%); background:rgba(0,0,0,.55); color:#fff; font-weight:800; border-radius:22px; padding:10px 14px; z-index:2; font-size:15px; pointer-events:none; }
+  .edge.l { left:10px; } .edge.r { right:10px; }
   .enc-bottom .q { font-weight:700; font-size:16px; margin-bottom:10px; line-height:1.4; }
   .opts { display:grid; gap:8px; }
   .opts button { background:#f1f5f6; color:var(--ink); text-align:left; padding:13px 14px; font-weight:600; border:2px solid transparent; }
@@ -178,6 +186,7 @@
 <section id="enc">
   <video id="encVideo" playsinline muted></video>
   <div class="enc-top"><span id="encWhere">📍</span><button id="encClose">✕ Rời đi</button></div>
+  <div class="reticle"></div><div class="edge" id="encEdge"></div>
   <div class="float" id="encFloat"><div class="glow" id="encPic"></div><div class="nm" id="encName"></div><span class="rr" id="encRar"></span><div class="cr" id="encCredit"></div></div>
   <div class="enc-bottom" id="encBottom"></div>
 </section>
@@ -291,17 +300,10 @@ function updateLeafletMarkers(near) {
     m.ring.setStyle({ fillOpacity: isNear ? 0.3 : (got ? 0.02 : 0.08), opacity: got ? 0.4 : 1 });
   });
 }
-function moveLeafletMe(x, z, acc) {
-  const ll = xzToLL(x, z);
-  if (!LM.hasLayer(lmMe)) { lmAcc.addTo(LM); lmMe.addTo(LM); }
-  lmMe.setLatLng(ll); lmAcc.setLatLng(ll); lmAcc.setRadius(Math.min(acc, 60));
-  if (lmFollow) LM.panTo(ll, { animate: true });
-  renderCompass();
-}
 
 // ---------- LA BÀN & HƯỚNG ĐIỆN THOẠI ----------
 const CONE_SVG = `<svg class="cone" viewBox="-40 -40 80 80"><defs><radialGradient id="lcg" cx="0" cy="0" r="40" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2a7fd0" stop-opacity=".85"/><stop offset="1" stop-color="#2a7fd0" stop-opacity="0"/></radialGradient></defs><path d="M0 0 L-23 -32.6 A40 40 0 0 1 23 -32.6 Z" fill="url(#lcg)"/></svg>`;
-let heading = null, hdgSrc = '', hdgUp = false, camAim = null, compassOn = false, lastOri = 0;
+let devBeta = null, heading = null, hdgSrc = '', hdgUp = false, camAim = null, compassOn = false, lastOri = 0;
 function setHeading(h, src, snap) {
   h = norm(h);
   if (heading == null || snap) heading = h;
@@ -314,7 +316,7 @@ function onOri(e) {
   else if (e.absolute && e.alpha != null) h = 360 - e.alpha;                                             // Android
   else return;
   const so = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
-  lastOri = Date.now(); setHeading(h + so, 'compass');
+  lastOri = Date.now(); if (e.beta != null) devBeta = e.beta; setHeading(h + so, 'compass');
 }
 function startCompass() {
   if (compassOn) return Promise.resolve(true);
@@ -334,7 +336,7 @@ function renderCompass() {
   if (DEMO) { const ico = document.getElementById('lmMeIco'); if (ico) { ico.classList.toggle('h', heading != null); if (heading != null) ico.querySelector('.cone').style.transform = `rotate(${heading - up}deg)`; } }
 }
 function renderHeading() {
-  if (hdgUp && heading != null) { if (DEMO && LM) LM.setBearing(-heading); else if (mode3d && T) camAim = heading; }
+  if (hdgUp && heading != null) { if (DEMO && LM) startAnim(); else if (mode3d && T) camAim = heading; }
   const sc = document.getElementById('svgCone');
   if (sc && heading != null) { sc.setAttribute('display', ''); sc.setAttribute('transform', `rotate(${heading - xzToAz(0, -1)})`); }
   renderCompass();
@@ -344,14 +346,14 @@ function renderHeading() {
 function setHdgUp(on, quiet) {
   hdgUp = on; $('#compass').classList.toggle('up', on);
   if (on) renderHeading();
-  else { if (DEMO && LM) LM.setBearing(0); else if (mode3d && T && !quiet) camAim = 0; }
+  else { if (DEMO && LM) { curBearing = 0; LM.setBearing(0); } else if (mode3d && T && !quiet) camAim = 0; }
   if (!quiet) toast(on ? 'Bản đồ xoay theo hướng điện thoại' : 'Bản đồ hướng Bắc lên trên');
 }
 $('#compass').onclick = async () => {
   const ok = await startCompass();
   if (hdgUp) { setHdgUp(false); return; }
   if (!DEMO && !mode3d) { toast(heading != null ? `Điện thoại đang hướng về ${HUONG8[Math.round(heading / 45) % 8]} — chuyển sang 3D để xoay bản đồ theo hướng` : 'Chuyển sang 3D để xoay bản đồ theo hướng'); return; }
-  if (heading == null) { toast(ok ? 'Đang chờ la bàn… thử xoay nhẹ điện thoại' : 'Máy không có la bàn — hướng sẽ lấy theo hướng bạn di chuyển'); if (DEMO && LM) LM.setBearing(0); else if (T) camAim = 0; setTimeout(() => { if (heading != null && !hdgUp) setHdgUp(true); }, 1500); return; }
+  if (heading == null) { toast(ok ? 'Đang chờ la bàn… thử xoay nhẹ điện thoại' : 'Máy không có la bàn — hướng sẽ lấy theo hướng bạn di chuyển'); if (DEMO && LM) { curBearing = 0; LM.setBearing(0); } else if (T) camAim = 0; setTimeout(() => { if (heading != null && !hdgUp) setHdgUp(true); }, 1500); return; }
   setHdgUp(true);
 };
 // Android: không cần xin quyền; iPhone: xin quyền khi người chơi chạm nút
@@ -535,7 +537,7 @@ function init3D() {
         controls.target.lerp(fly.t, 1 - Math.pow(.001, dt)); camera.position.lerp(fly.p, 1 - Math.pow(.001, dt));
         if (camera.position.distanceTo(fly.p) < .3) fly = null;
       } else if (follow && me) {
-        const d = new THREE.Vector3(me.x, 0, me.z).sub(controls.target).multiplyScalar(1 - Math.pow(.02, dt));
+        const d = new THREE.Vector3(me.x, 0, me.z).sub(controls.target).multiplyScalar(1 - Math.pow(.002, dt));
         controls.target.add(d); camera.position.add(d);
       }
       // xoay camera về hướng mong muốn (theo hướng điện thoại / về hướng Bắc)
@@ -557,7 +559,7 @@ function init3D() {
   T.resize();
 }
 function moveAvatar(x, z, acc) {
-  T.avatar.visible = true; T.avatar.position.set(x, 0, z); T.acc.scale.setScalar(Math.max(2, Math.min(acc, 40)));
+  T.avatar.visible = true; T.avatar.position.set(x, 0, z); if (acc) T.acc.scale.setScalar(Math.max(2, Math.min(acc, 40)));
   if (!T.started) { T.started = true; viewMode = 'me'; T.flyHome(); }
 }
 function updateMarkers(near) {
@@ -585,7 +587,7 @@ function startGPS() {
     updateMe(x, z, p.coords.accuracy);
   }, err => {
     setStatus(err.code === 1 ? 'Bạn chưa cho phép truy cập vị trí. Hãy bật quyền vị trí cho trang này, hoặc dùng <b>Quét QR</b>.' : 'Chưa lấy được vị trí GPS — thử ra chỗ thoáng, hoặc dùng <b>Quét QR</b>.');
-  }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
+  }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
 }
 map.addEventListener('click', e => {
   if (!testMode) return;
@@ -611,15 +613,41 @@ function fitView() {
 $('#zoomB').onclick = () => { if (DEMO && LM) { lmFollow = !lmFollow; if (lmFollow && me) LM.setView(xzToLL(me.x, me.z), 20); else LM.fitBounds(L.latLngBounds(CHECKPOINTS.map(c => [c.lat, c.lon])).pad(0.4)); $('#zoomB').textContent = lmFollow ? '⤢ Toàn cảnh' : '◎ Gần tôi'; return; } if (!me && viewMode === 'all') { toast('Chưa có vị trí của bạn'); return; } viewMode = viewMode === 'me' ? 'all' : 'me'; fitView(); if (T) T.flyHome(); };
 addEventListener('resize', fitView);
 function setStatus(h) { $('#status').innerHTML = h; }
+// vòng lặp hoạt ảnh: chấm vị trí trượt mượt tới vị trí GPS mới, bản đồ đi theo, xoay mượt theo hướng
+let disp = null, animOn = false, animT = 0, curBearing = 0, svgLast = 0;
+function startAnim() { if (animOn) return; animOn = true; animT = performance.now(); requestAnimationFrame(animStep); }
+function animStep(t) {
+  const dt = Math.min((t - animT) / 1000, 0.1); animT = t;
+  if (me && disp) {
+    const k = 1 - Math.pow(0.02, dt);  // ~ đuổi kịp trong ~0,8 s
+    disp.x += (me.x - disp.x) * k; disp.z += (me.z - disp.z) * k;
+    if (Math.hypot(me.x - disp.x, me.z - disp.z) < 0.02) { disp.x = me.x; disp.z = me.z; }
+    if (gPlayer) gPlayer.setAttribute('transform', `translate(${disp.x.toFixed(2)} ${disp.z.toFixed(2)})`);
+    if (T) moveAvatar(disp.x, disp.z);
+    if (LM) {
+      const ll = xzToLL(disp.x, disp.z); lmMe.setLatLng(ll); lmAcc.setLatLng(ll);
+      if (lmFollow) { const c = LM.getCenter(); if (Math.abs(c.lat - ll[0]) > 1e-8 || Math.abs(c.lng - ll[1]) > 1e-8) LM.setView(ll, LM.getZoom(), { animate: false }); }
+    }
+    if (!DEMO && !mode3d && viewMode === 'me' && t - svgLast > 120) { svgLast = t; fitView(); }
+  }
+  if (LM) {
+    const want = hdgUp && heading != null ? -heading : (hdgUp ? curBearing : null);
+    if (want != null) { const d = ((want - curBearing + 540) % 360) - 180; if (Math.abs(d) > 0.15) { curBearing = norm(curBearing + d * (1 - Math.pow(0.01, dt))); LM.setBearing(curBearing); } }
+  }
+  if (!$('#play').classList.contains('on')) { animOn = false; return; }
+  requestAnimationFrame(animStep);
+}
 function updateMe(x, z, acc) {
   if (me && hdgSrc !== 'compass' && Math.hypot(x - me.x, z - me.z) > 1.5) setHeading(xzToAz(x - me.x, z - me.z), 'move', true);
+  // lọc nhiễu GPS: điểm sai số lớn chỉ kéo vị trí đi một phần
+  if (me && !testMode) { const k = Math.max(0.35, Math.min(1, 6 / Math.max(acc, 1))); x = me.x + (x - me.x) * k; z = me.z + (z - me.z) * k; }
   me = { x, z, acc };
-  if (gPlayer) { gPlayer.setAttribute('display', ''); gPlayer.setAttribute('transform', `translate(${x} ${z})`);
-  gPlayer.querySelector('#acc').setAttribute('r', Math.min(acc, 40)); }
-  if (T) moveAvatar(x, z, acc);
-  if (LM) moveLeafletMe(x, z, acc);
-  if (!autoZoomed && map.clientWidth < map.clientHeight && x > -110 && x < 40 && z > -45 && z < 60) { autoZoomed = true; viewMode = 'me'; }
-  fitView();
+  if (!disp) disp = { x, z };
+  if (gPlayer) { gPlayer.setAttribute('display', ''); gPlayer.querySelector('#acc').setAttribute('r', Math.min(acc, 40)); }
+  if (T) T.acc.scale.setScalar(Math.max(2, Math.min(acc, 40)));
+  if (LM) { if (!LM.hasLayer(lmMe)) { lmAcc.addTo(LM); lmMe.addTo(LM); } lmAcc.setRadius(Math.min(acc, 60)); }
+  startAnim();
+  if (!autoZoomed && map.clientWidth < map.clientHeight && x > -110 && x < 40 && z > -45 && z < 60) { autoZoomed = true; viewMode = 'me'; fitView(); }
   const inSite = DEMO ? Math.hypot(x, z) < 80 : (x > -110 && x < 40 && z > -45 && z < 60);
   // dấu ấn gần nhất chưa thu thập
   let best = null;
@@ -631,7 +659,7 @@ function updateMe(x, z, acc) {
   const accTxt = `GPS ±${Math.round(acc)} m`;
   if (!inSite) setStatus(DEMO ? `Bạn đang ở xa khu demo (${accTxt}). Hãy đến gần các vòng tròn trên bản đồ.` : `Bạn đang ở ngoài khuôn viên Nhà Văn hóa (${accTxt}). Hãy đến <b>160 Hạ Long, Vũng Tàu</b> để bắt đầu.`);
   else if (!best) setStatus('🎉 Bạn đã thu thập đủ dấu ấn! Mở <b>Sổ tay</b> để nhận quà.');
-  else if (nearCp) setStatus(`✨ <b>Có dấu ấn ở gần!</b> Bấm <b>Bắt dấu ấn</b> ngay. <span style="color:#5f6b78">(${accTxt})</span>`);
+  else if (nearCp) setStatus(`✨ <b>Bạn đã vào vùng phát hiện!</b> Bấm <b>Bắt dấu ấn</b> rồi tìm dấu ấn qua camera. <span style="color:#5f6b78">(${accTxt})</span>`);
   else setStatus(`Dấu ấn gần nhất: <b>${best.cp.spot}</b> — cách khoảng <b>${Math.round(best.d)} m</b>. <span style="color:#5f6b78">${accTxt}${acc > 25 ? ' · GPS yếu, có thể dùng Quét QR' : ''}</span>`);
 }
 $('#bCatch').onclick = () => {
@@ -650,16 +678,65 @@ async function openEncounter(cp, via) {
   const rr = $('#encRar'); rr.textContent = `${R.name} · ${cp.region}`; rr.style.background = R.color;
   $('#encFloat').style.setProperty('--rc', R.color); $('#encFloat').classList.remove('caught');
   $('#encWhere').textContent = `📍 ${cp.spot}${via === 'qr' ? ' · QR' : ''}`;
-  $('#encBottom').innerHTML = `<div class="fact">${cp.fact}</div><button class="btn wide" id="encGo">✨ Thu thập dấu ấn</button>`;
-  $('#encGo').onclick = () => askQuestion(cp);
   $('#enc').classList.add('on');
+  if (via === 'gps' && me) startSeek(cp); else revealMark(cp);
   if (T) T.renderer.setAnimationLoop(null);
   try {
     encStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
     const v = $('#encVideo'); v.srcObject = encStream; v.style.display = 'block'; await v.play();
   } catch { $('#encVideo').style.display = 'none'; }
 }
+// vị trí ẩn của dấu ấn trong vùng phát hiện (cố định cho mỗi người chơi)
+function hash01(str) { let h = 2166136261; for (const c of str) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return ((h >>> 0) % 100000) / 100000; }
+function markSpot(cp) {
+  const R = CONFIG.CATCH_RADIUS, a = hash01(S.pid + ':a' + cp.id) * 360, r = R * (0.35 + 0.45 * hash01(S.pid + ':r' + cp.id));
+  const [vx, vz] = azToXZ(a); return { x: cp.x + vx * r, z: cp.z + vz * r };
+}
+const HFOV = 56, VFOV = 72;
+let seek = null;
+function startSeek(cp) {
+  const spot = markSpot(cp);
+  seek = { cp, spot, virt: hdgSrc === 'compass' ? null : norm((heading ?? 0) + 120 + hash01(S.pid + cp.id) * 120), raf: 0, drag: null };
+  $('#enc').classList.add('seek'); const f = $('#encFloat'); f.classList.remove('found'); f.style.left = '-50%';
+  f.onclick = () => { if (seek && seek.vis) { navigator.vibrate?.(60); revealMark(cp); } };
+  const noCompass = seek.virt != null;
+  $('#encBottom').innerHTML = `<div class="q">🔍 Dấu ấn đang ẩn quanh bạn</div><div class="fact" id="seekHint"></div><div class="fact" style="color:#5f6b78;font-size:12.5px">${noCompass ? 'Máy không có la bàn: <b>vuốt ngang màn hình</b> để nhìn quanh.' : 'Giơ điện thoại lên và <b>xoay người</b> để nhìn quanh qua camera.'} Thấy dấu ấn thì <b>chạm vào nó</b>.</div>`;
+  const enc = $('#enc');
+  enc.onpointerdown = e => { if (seek && seek.virt != null) seek.drag = [e.clientX, seek.virt]; };
+  enc.onpointermove = e => { if (seek && seek.drag) seek.virt = norm(seek.drag[1] - (e.clientX - seek.drag[0]) / innerWidth * HFOV * 1.4); };
+  enc.onpointerup = enc.onpointercancel = () => { if (seek) seek.drag = null; };
+  const step = () => {
+    if (!seek) return;
+    const p = disp || me, dx = seek.spot.x - p.x, dz = seek.spot.z - p.z, d = Math.hypot(dx, dz);
+    const brg = d < 1.2 ? null : xzToAz(dx, dz);
+    if (seek.virt == null && hdgSrc !== 'compass') seek.virt = heading ?? 0;
+    const look = seek.virt != null ? seek.virt : heading;
+    const rel = brg == null ? 0 : ((brg - look + 540) % 360) - 180;
+    const pitch = seek.virt == null && devBeta != null ? devBeta - 90 : 0;
+    const elev = -Math.min(25, Math.atan2(1.3, Math.max(d, 0.8)) / RAD);   // dấu ấn nằm gần mặt đất
+    const xs = 50 + rel / HFOV * 100, ys = 42 - (elev - pitch) / VFOV * 100;
+    const f = $('#encFloat'), vis = Math.abs(rel) < HFOV / 2 + 8 && ys > -10 && ys < 95;
+    seek.vis = vis;
+    f.style.left = vis ? xs + '%' : '-60%'; f.style.top = `calc(${ys}% - 22vw)`;
+    f.style.width = `min(${Math.round(Math.max(26, Math.min(52, 120 / Math.max(d, 1.5))))}vw, 220px)`;
+    const eg = $('#encEdge');
+    if (!vis) { eg.style.display = 'block'; eg.className = 'edge ' + (rel < 0 ? 'l' : 'r'); eg.textContent = rel < 0 ? `◀ xoay trái ${Math.round(-rel)}°` : `xoay phải ${Math.round(rel)}° ▶`; }
+    else eg.style.display = 'none';
+    const h = $('#seekHint');
+    if (h) h.innerHTML = brg == null ? '📍 Dấu ấn ở <b>ngay chỗ bạn đứng</b> — nhìn xuống quanh chân!' : `🧭 Dấu ấn ở hướng <b>${HUONG8[Math.round(brg / 45) % 8]}</b>, cách bạn khoảng <b>${Math.max(1, Math.round(d))} m</b>.` + (Math.abs(rel) < 10 ? ' <b style="color:#0f8f86">Ở ngay trước mặt — chạm vào!</b>' : '');
+    seek.raf = requestAnimationFrame(step);
+  };
+  step();
+}
+function stopSeek() { if (seek) { cancelAnimationFrame(seek.raf); seek = null; } $('#enc').classList.remove('seek'); $('#encEdge').style.display = 'none'; const e = $('#enc'); e.onpointerdown = e.onpointermove = e.onpointerup = e.onpointercancel = null; }
+function revealMark(cp) {
+  stopSeek(); const f = $('#encFloat'); f.onclick = null; f.classList.add('found');
+  f.style.left = '50%'; f.style.top = '16%'; f.style.width = '';
+  $('#encBottom').innerHTML = `<div class="q">🎯 Tìm thấy dấu ấn!</div><div class="fact">${cp.fact}</div><button class="btn wide" id="encGo">✨ Thu thập dấu ấn</button>`;
+  $('#encGo').onclick = () => askQuestion(cp);
+}
 function closeEncounter() {
+  stopSeek();
   $('#enc').classList.remove('on');
   if (T && mode3d) T.renderer.setAnimationLoop(T.loop);
   if (encStream) { encStream.getTracks().forEach(t => t.stop()); encStream = null; }
