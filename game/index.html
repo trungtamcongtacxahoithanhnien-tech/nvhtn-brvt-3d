@@ -270,12 +270,39 @@ function enterPlay() {
 // ---------- bản đồ thật (Leaflet) cho bản demo ----------
 let LM = null, lmMe = null, lmAcc = null, lmFollow = true, lmMarks = {};
 const xzToLL = (x, z) => [demoC.lat - z / 110574, demoC.lon + x / D_MLON(demoC.lat)];
+// Bản đồ Google nhúng (iframe chính thức của Google Maps), đặt khớp toạ độ vào khung Leaflet.
+// Cùng phép chiếu Web Mercator nên chấm GPS, vòng dấu ấn nằm đúng chỗ trên ảnh Google; xoay theo la bàn vẫn hoạt động.
+function googleLayer(lat, lon, z, t) {
+  const W = 1200, PAD = 160;   // vùng hiển thị 1200×1200 px ở zoom z (~175 m); dư viền để giấu nút điều khiển của Google
+  const Lyr = L.ImageOverlay.extend({
+    _initImage() {
+      const el = this._image = L.DomUtil.create('div', 'leaflet-image-layer gframe');
+      el.style.overflow = 'hidden'; el.style.pointerEvents = 'none';
+      const f = document.createElement('iframe');
+      f.src = `https://maps.google.com/maps?ll=${lat},${lon}&z=${z}&t=${t}&hl=vi&output=embed`;
+      f.setAttribute('loading', 'eager'); f.setAttribute('referrerpolicy', 'no-referrer-when-downgrade'); f.title = 'Google Maps';
+      Object.assign(f.style, { position: 'absolute', left: -PAD + 'px', top: -PAD + 'px', width: (W + 2 * PAD) + 'px', height: (W + 2 * PAD) + 'px', border: 0, transformOrigin: `${PAD}px ${PAD}px` });
+      el.appendChild(f); this._frame = f;
+      if (this._zoomAnimated) L.DomUtil.addClass(el, 'leaflet-zoom-animated');
+    },
+    _reset() {
+      L.ImageOverlay.prototype._reset.call(this);
+      const sz = this._image.getBoundingClientRect ? parseFloat(this._image.style.width) : W;
+      this._frame.style.transform = `scale(${sz / W})`;
+    },
+  });
+  const c = L.CRS.EPSG3857.latLngToPoint(L.latLng(lat, lon), z);
+  const b = L.latLngBounds(L.CRS.EPSG3857.pointToLatLng(c.add([-W / 2, W / 2]), z), L.CRS.EPSG3857.pointToLatLng(c.add([W / 2, -W / 2]), z));
+  return new Lyr('', b, { attribution: 'Bản đồ © Google', interactive: false });
+}
 function initLeaflet() {
   if (LM || !window.L) return;
   LM = L.map('lmap', { zoomControl: false, attributionControl: true, maxZoom: 22, rotate: true, rotateControl: false, touchRotate: true, bearing: 0 }).setView([demoC.lat, demoC.lon], 21);
-  const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 19, maxZoom: 22, attribution: 'Ảnh vệ tinh © Esri, Maxar' }).addTo(LM);
+  const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 19, maxZoom: 22, attribution: 'Ảnh vệ tinh © Esri, Maxar' });
   const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 22, attribution: '© OpenStreetMap' });
-  L.control.layers({ 'Vệ tinh': sat, 'Bản đồ': osm }, null, { position: 'bottomleft' }).addTo(LM);
+  const gg = googleLayer(demoC.lat, demoC.lon, 20, 'k'), ggm = googleLayer(demoC.lat, demoC.lon, 20, 'm');
+  gg.addTo(LM);
+  L.control.layers({ 'Google vệ tinh': gg, 'Google bản đồ': ggm, 'Esri vệ tinh': sat, 'OpenStreetMap': osm }, null, { position: 'bottomleft' }).addTo(LM);
   LM.on('dragstart', () => { lmFollow = false; $('#zoomB').textContent = '◎ Gần tôi'; });
   LM.on('click', e => { if (testMode) { const { x, z } = toXZ(e.latlng.lat, e.latlng.lng); updateMe(x, z, 3); } });
   CHECKPOINTS.forEach(cp => {
