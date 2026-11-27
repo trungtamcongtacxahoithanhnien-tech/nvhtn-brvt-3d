@@ -207,7 +207,7 @@ export function createWorld({ host, center, toXZ, cps, getState, onTapCp, onTapG
       const m = gl.scene, box = new THREE.Box3().setFromObject(m), h = box.max.y - box.min.y || 1, sc = 2.7 / h;
       m.scale.setScalar(sc); m.position.y = -box.min.y * sc;
       const cx = (box.max.x + box.min.x) / 2 * sc, cz = (box.max.z + box.min.z) / 2 * sc; m.position.x = -cx; m.position.z = -cz;
-      m.traverse(o => { if (o.isMesh) { o.castShadow = false; if (o.material) o.material.side = THREE.FrontSide; } });
+      m.traverse(o => { if (o.isMesh) { if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals(); if (o.material) { o.material.side = THREE.FrontSide; if (o.material.metalness !== undefined) { o.material.metalness = 0; o.material.roughness = 0.75; } } } });
       const wrap = new THREE.Group(), inner = new THREE.Group(); inner.add(m); wrap.add(inner);
       const sh = new THREE.Mesh(new THREE.CircleGeometry(0.55, 24), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.22, depthWrite: false })); sh.rotation.x = -Math.PI / 2; sh.position.y = 0.02; wrap.add(sh);
       let mixer = null, walkA = null, idleA = null;
