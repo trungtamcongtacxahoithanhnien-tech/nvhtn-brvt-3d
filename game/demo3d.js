@@ -57,6 +57,50 @@ export function mascot(icon) {
 
 export const mascotImage = icon => ASSET + icon + '.webp';
 
+// ================= TỰ GẮN XƯƠNG CHO MÔ HÌNH TƯ THẾ CHỮ A =================
+// Mô hình 3D dựng từ ảnh không có xương. Hàm này phân vùng đỉnh theo tỉ lệ cơ thể chibi
+// (chân, tay, thân, đầu), tạo khung xương đơn giản và trọng số da để nhân vật bước đi được.
+const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+export function autoRig(mesh) {
+  const g = mesh.geometry, P = g.attributes.position, n = P.count;
+  g.computeBoundingBox(); const bb = g.boundingBox, H = bb.max.y - bb.min.y, y0 = bb.min.y, cx = (bb.max.x + bb.min.x) / 2, cz = (bb.max.z + bb.min.z) / 2;
+  const HIP = 0.26, SH = 0.5, NECK = 0.56;
+  const B = (name, x, y, z, parent) => { const b = new THREE.Bone(); b.name = name; b.position.set(x, y, z); if (parent) parent.add(b); return b; };
+  const root = B('root', cx, y0 + HIP * H, cz);
+  const legL = B('legL', -0.065 * H, 0, 0, root), legR = B('legR', 0.065 * H, 0, 0, root);
+  const spine = B('spine', 0, 0.02 * H, 0, root);
+  const armL = B('armL', -0.14 * H, (SH - HIP - 0.02) * H, 0, spine), armR = B('armR', 0.14 * H, (SH - HIP - 0.02) * H, 0, spine);
+  const head = B('head', 0, (NECK - HIP - 0.02) * H, 0, spine);
+  const bones = [root, legL, legR, spine, armL, armR, head]; // chỉ số 0..6
+  const si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const xn = (P.getX(i) - cx) / H, h = (P.getY(i) - y0) / H, ax = Math.abs(xn), side = xn < 0 ? 0 : 1;
+    let a = 3, b = 3, w = 0;                                           // mặc định: thân
+    if (h > NECK - 0.04) { a = 6; b = 3; w = sstep(NECK - 0.04, NECK + 0.03, h); }          // đầu
+    const armW = h > 0.18 && h < SH + 0.04 ? sstep(0.13, 0.18, ax) * (1 - sstep(SH - 0.02, SH + 0.04, h)) : 0;
+    if (armW > 0) { a = 4 + side; b = 3; w = armW; }                  // tay
+    else if (h < HIP + 0.05 && ax < 0.18) { a = 1 + side; b = 0; w = 1 - sstep(HIP - 0.06, HIP + 0.05, h); }  // chân
+    si.set([a, b, 0, 0], i * 4); sw.set([w, 1 - w, 0, 0], i * 4);
+  }
+  g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
+  g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+  const sk = new THREE.SkinnedMesh(g, mesh.material); sk.name = mesh.name;
+  sk.position.copy(mesh.position); sk.quaternion.copy(mesh.quaternion); sk.scale.copy(mesh.scale);
+  sk.add(root); sk.bind(new THREE.Skeleton(bones)); sk.frustumCulled = false;
+  mesh.parent.add(sk); mesh.parent.remove(mesh);
+  const rest = { y: root.position.y };
+  sk.userData.pose = (ph, amt, t) => {
+    const s = Math.sin(ph), idle = 1 - amt;
+    legL.rotation.x = s * 0.6 * amt; legR.rotation.x = -s * 0.6 * amt;
+    armL.rotation.x = -s * 0.55 * amt; armR.rotation.x = s * 0.55 * amt;
+    armL.rotation.z = 0.32 + Math.sin(t * 1.6) * 0.03 * idle; armR.rotation.z = -0.32 - Math.sin(t * 1.6) * 0.03 * idle;   // hạ tay khỏi tư thế chữ A
+    spine.rotation.y = s * 0.1 * amt; spine.rotation.x = 0.06 * amt;
+    head.rotation.z = Math.sin(t * 1.3) * 0.04 * idle; head.rotation.y = -s * 0.06 * amt;
+    root.position.y = rest.y + Math.abs(Math.cos(ph)) * 0.035 * H * amt + Math.sin(t * 2) * 0.004 * H * idle;
+  };
+  return sk;
+}
+
 // ================= NHÂN VẬT NGƯỜI CHƠI =================
 export const SHIRTS = ['#1e88e5', '#e53935', '#43a047', '#fdd835', '#8e24aa', '#fb8c00', '#00acc1', '#ec407a'];
 export function avatar({ gender = 'nam', shirt = '#1e88e5' } = {}) {
@@ -208,6 +252,11 @@ export function createWorld({ host, center, toXZ, cps, getState, onTapCp, onTapG
       m.scale.setScalar(sc); m.position.y = -box.min.y * sc;
       const cx = (box.max.x + box.min.x) / 2 * sc, cz = (box.max.z + box.min.z) / 2 * sc; m.position.x = -cx; m.position.z = -cz;
       m.traverse(o => { if (o.isMesh) { if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals(); if (o.material) { o.material.side = THREE.FrontSide; if (o.material.metalness !== undefined) { o.material.metalness = 0; o.material.roughness = 0.75; } } } });
+      let rigs = [];
+      if (!(gl.animations && gl.animations.length)) {
+        const meshes = []; m.traverse(o => { if (o.isMesh && !o.isSkinnedMesh) meshes.push(o); });
+        if (meshes.length === 1) { try { rigs.push(autoRig(meshes[0])); } catch (e) { console.warn('autoRig', e); } }
+      }
       const wrap = new THREE.Group(), inner = new THREE.Group(); inner.add(m); wrap.add(inner);
       const sh = new THREE.Mesh(new THREE.CircleGeometry(0.55, 24), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.22, depthWrite: false })); sh.rotation.x = -Math.PI / 2; sh.position.y = 0.02; wrap.add(sh);
       let mixer = null, walkA = null, idleA = null;
@@ -220,6 +269,7 @@ export function createWorld({ host, center, toXZ, cps, getState, onTapCp, onTapG
       }
       wrap.userData.walk = (ph, amt, dt) => {
         if (mixer) { walkA.setEffectiveWeight(amt); if (idleA) idleA.setEffectiveWeight(1 - amt); mixer.update(dt || 0.016); }
+        else if (rigs.length) { wrap.userData.t = (wrap.userData.t || 0) + (dt || 0.016); rigs.forEach(r => r.userData.pose(ph, amt, wrap.userData.t)); }
         else { inner.position.y = Math.abs(Math.sin(ph)) * 0.16 * amt; inner.rotation.z = Math.sin(ph) * 0.07 * amt; inner.rotation.x = 0.08 * amt; }
       };
       g.remove(a); g.add(wrap); me.a = wrap;
