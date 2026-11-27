@@ -60,6 +60,8 @@
   .compass svg { width:40px; height:40px; transition:transform .15s linear; }
   .compass.up { box-shadow:0 0 0 3px #2a7fd0, 0 2px 10px rgba(0,0,0,.2); }
   .test .compass { bottom:100px; }
+  .calibb { position:absolute; right:10px; bottom:116px; background:#fff; color:#1d4f86; box-shadow:0 2px 10px rgba(0,0,0,.2); padding:8px 12px; font-size:13px; font-weight:700; z-index:3; border-radius:18px; }
+  .calibb.on { background:#1d4f86; color:#fff; } .test .calibb { bottom:158px; }
   .hdg { position:absolute; right:64px; bottom:66px; background:rgba(255,255,255,.95); border-radius:16px; padding:5px 10px; font-size:12.5px; font-weight:700; color:#1d4f86; box-shadow:0 2px 8px rgba(0,0,0,.15); z-index:3; white-space:nowrap; display:none; }
   .hdg.on { display:block; } .test .hdg { bottom:108px; }
   .meico { position:relative; width:0; height:0; }
@@ -170,6 +172,7 @@
     <div id="map3d"></div>
     <button class="compass" id="compass" aria-label="La bàn — chạm để xoay bản đồ theo hướng điện thoại"><svg viewBox="-20 -20 40 40" id="needle"><circle r="18" fill="#fff" stroke="#d6dde4" stroke-width="1"/><path d="M0 -15 L5 0 L-5 0Z" fill="#e0352b"/><path d="M0 15 L5 0 L-5 0Z" fill="#9aa5b1"/><circle r="1.8" fill="#fff"/><text y="-8.5" font-size="0" fill="#fff"></text><text x="0" y="-16.2" font-size="5.2" text-anchor="middle" font-weight="800" fill="#e0352b" dy="-0.4">B</text></svg></button>
     <div class="hdg" id="hdg"></div>
+    <button class="calibb" id="calibB">📍 Sửa vị trí</button>
     <button class="zoomb" id="zoomB">◎ Gần tôi</button>
     <button class="modeb" id="modeB">🗺 Bản đồ 2D</button>
     <div class="testbar">🧪 Chế độ thử: chạm vào bản đồ để giả lập vị trí của bạn.</div>
@@ -259,9 +262,10 @@ function enterPlay() {
   show('play'); renderHud();
   if (DEMO) {
     document.querySelector('.mapwrap').classList.add('demo');
-    const c = !DEMO.here ? { lat: DEMO.lat, lon: DEMO.lon } : S.demoC;
+    const c = (S.demoMine && S.demoC) || (!DEMO.here ? { lat: DEMO.lat, lon: DEMO.lon } : S.demoC);
     if (c) { placeDemo(c.lat, c.lon); S.demoC = c; save(); initLeaflet(); }
-    $('#demoBar').innerHTML = `🧪 <b>Bản demo</b> · 9 điểm cách nhau ${DEMO.s} m · bắt trong ${DEMO.r} m · không ghi bảng xếp hạng` + (c ? '' : ' · đang chờ GPS để đặt điểm quanh bạn…') + ` · <a href="#" id="demoReset">Làm lại</a>`;
+    $('#demoBar').innerHTML = `🧪 <b>Bản demo</b> · 9 điểm cách nhau ${DEMO.s} m · bắt trong ${DEMO.r} m · không ghi bảng xếp hạng` + (c ? '' : ' · đang chờ GPS để đặt điểm quanh bạn…') + ` · <a href="#" id="demoHere">Đặt điểm quanh tôi</a> · <a href="#" id="demoReset">Làm lại</a>`;
+    $('#demoHere').onclick = e => { e.preventDefault(); if (!me) { toast('Chưa có vị trí của bạn'); return; } const ll = xzToLL(me.x, me.z); S.demoC = { lat: ll[0], lon: ll[1] }; S.demoMine = true; S.caught = {}; S.score = 0; save(); try { localStorage.removeItem(LS + '-calib'); } catch { } location.reload(); };
     $('#demoReset').onclick = e => { e.preventDefault(); try { localStorage.removeItem(LS); } catch { } location.reload(); };
     startGPS(); handleHash(); return;
   }
@@ -271,45 +275,64 @@ function enterPlay() {
 let LM = null, lmMe = null, lmAcc = null, lmFollow = true, lmMarks = {};
 const xzToLL = (x, z) => [demoC.lat - z / 110574, demoC.lon + x / D_MLON(demoC.lat)];
 // Bản đồ Google nhúng (iframe chính thức của Google Maps), đặt khớp toạ độ vào khung Leaflet.
-// Cùng phép chiếu Web Mercator nên chấm GPS, vòng dấu ấn nằm đúng chỗ trên ảnh Google; xoay theo la bàn vẫn hoạt động.
-function googleLayer(lat, lon, z, t) {
-  const W = 1200, PAD = 160;   // vùng hiển thị 1200×1200 px ở zoom z (~175 m); dư viền để giấu nút điều khiển của Google
+// Cùng phép chiếu Web Mercator nên chấm GPS, vòng dấu ấn nằm đúng chỗ trên ảnh Google. Khung Google được
+// tạo lại theo vị trí/mức phóng đang xem nên luôn phủ kín màn hình; bên dưới lót ảnh Esri trong lúc tải.
+function googleFrame(lat, lon, z, t, W) {
+  const PAD = 170;   // dư viền để giấu nút điều khiển của Google
   const Lyr = L.ImageOverlay.extend({
     _initImage() {
       const el = this._image = L.DomUtil.create('div', 'leaflet-image-layer gframe');
       el.style.overflow = 'hidden'; el.style.pointerEvents = 'none';
       const f = document.createElement('iframe');
-      f.src = `https://maps.google.com/maps?ll=${lat},${lon}&z=${z}&t=${t}&hl=vi&output=embed`;
-      f.setAttribute('loading', 'eager'); f.setAttribute('referrerpolicy', 'no-referrer-when-downgrade'); f.title = 'Google Maps';
+      f.src = `https://maps.google.com/maps?ll=${lat.toFixed(7)},${lon.toFixed(7)}&z=${z}&t=${t}&hl=vi&output=embed`;
+      f.title = 'Google Maps';
       Object.assign(f.style, { position: 'absolute', left: -PAD + 'px', top: -PAD + 'px', width: (W + 2 * PAD) + 'px', height: (W + 2 * PAD) + 'px', border: 0, transformOrigin: `${PAD}px ${PAD}px` });
       el.appendChild(f); this._frame = f;
       if (this._zoomAnimated) L.DomUtil.addClass(el, 'leaflet-zoom-animated');
     },
-    _reset() {
-      L.ImageOverlay.prototype._reset.call(this);
-      const sz = this._image.getBoundingClientRect ? parseFloat(this._image.style.width) : W;
-      this._frame.style.transform = `scale(${sz / W})`;
-    },
+    _reset() { L.ImageOverlay.prototype._reset.call(this); this._frame.style.transform = `scale(${parseFloat(this._image.style.width) / W})`; },
   });
   const c = L.CRS.EPSG3857.latLngToPoint(L.latLng(lat, lon), z);
   const b = L.latLngBounds(L.CRS.EPSG3857.pointToLatLng(c.add([-W / 2, W / 2]), z), L.CRS.EPSG3857.pointToLatLng(c.add([W / 2, -W / 2]), z));
-  return new Lyr('', b, { attribution: 'Bản đồ © Google', interactive: false });
+  const o = new Lyr('', b, { attribution: 'Bản đồ © Google', interactive: false }); o._gz = z; o._gc = L.latLng(lat, lon); o._gw = W; return o;
 }
+const GoogleLayer = L.Layer.extend({
+  initialize(t, under) { this._t = t; this._under = under; this._cur = null; this._tm = 0; },
+  onAdd(map) { this._map = map; this._under.addTo(map); map.on('moveend zoomend resize', this._sched, this); this._refresh(); },
+  onRemove(map) { map.off('moveend zoomend resize', this._sched, this); this._under.remove(); [this._cur, this._next].forEach(o => o && o.remove()); this._cur = this._next = null; },
+  _sched() { clearTimeout(this._tm); this._tm = setTimeout(() => this._refresh(), 350); },
+  _refresh() {
+    const m = this._map; if (!m) return;
+    const zoom = m.getZoom(), zg = Math.max(3, Math.min(this._t === 'k' ? 20 : 21, Math.floor(zoom))), sc = Math.pow(2, zoom - zg);
+    const sz = m.getSize(), need = Math.hypot(sz.x, sz.y) / sc * 1.15, ctr = m.getCenter();
+    const cur = this._next || this._cur;
+    if (cur && cur._gz === zg && cur._gw >= need) {
+      const d = m.project(ctr, zg).distanceTo(m.project(cur._gc, zg));
+      if (d < (cur._gw - need) / 2 + 1) return;    // khung hiện tại vẫn phủ kín
+    }
+    const W = Math.min(2600, Math.ceil(need * 1.35));
+    const o = googleFrame(ctr.lat, ctr.lng, zg, this._t, W).addTo(m);
+    if (this._next) this._next.remove();
+    this._next = o;
+    o._frame.addEventListener('load', () => setTimeout(() => { if (this._next !== o) return; if (this._cur) this._cur.remove(); this._cur = o; this._next = null; }, 600));
+  },
+});
 function initLeaflet() {
   if (LM || !window.L) return;
-  LM = L.map('lmap', { zoomControl: false, attributionControl: true, maxZoom: 22, rotate: true, rotateControl: false, touchRotate: true, bearing: 0 }).setView([demoC.lat, demoC.lon], 21);
+  LM = L.map('lmap', { zoomControl: false, attributionControl: true, maxZoom: 21, minZoom: 15, rotate: true, rotateControl: false, touchRotate: true, bearing: 0 }).setView([demoC.lat, demoC.lon], 20);
   const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 19, maxZoom: 22, attribution: 'Ảnh vệ tinh © Esri, Maxar' });
   const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 22, attribution: '© OpenStreetMap' });
-  const gg = googleLayer(demoC.lat, demoC.lon, 20, 'k'), ggm = googleLayer(demoC.lat, demoC.lon, 20, 'm');
+  const gg = new GoogleLayer('k', L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 19, maxZoom: 22 }));
+  const ggm = new GoogleLayer('m', L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 22 }));
   gg.addTo(LM);
   L.control.layers({ 'Google vệ tinh': gg, 'Google bản đồ': ggm, 'Esri vệ tinh': sat, 'OpenStreetMap': osm }, null, { position: 'bottomleft' }).addTo(LM);
   LM.on('dragstart', () => { lmFollow = false; $('#zoomB').textContent = '◎ Gần tôi'; });
-  LM.on('click', e => { if (testMode) { const { x, z } = toXZ(e.latlng.lat, e.latlng.lng); updateMe(x, z, 3); } });
+  LM.on('click', e => { if (calibMode) { const { x, z } = toXZ(e.latlng.lat, e.latlng.lng); calibAt(x, z); return; } if (testMode) { const { x, z } = toXZ(e.latlng.lat, e.latlng.lng); updateMe(x, z, 3); } });
   CHECKPOINTS.forEach(cp => {
     const col = RARITY[cp.rarity].color;
-    const ring = L.circle([cp.lat, cp.lon], { radius: CONFIG.CATCH_RADIUS, color: col, weight: 2, dashArray: '4 4', fillColor: col, fillOpacity: 0.08 }).addTo(LM);
+    const ring = L.circle([cp.lat, cp.lon], { radius: CONFIG.CATCH_RADIUS, color: col, weight: 2, dashArray: '4 4', fillColor: col, fillOpacity: 0.08, interactive: false }).addTo(LM);
     const mk = L.marker([cp.lat, cp.lon], { icon: L.divIcon({ className: '', iconSize: [34, 34], iconAnchor: [17, 17], html: '' }) }).addTo(LM);
-    mk.on('click', () => toast(S.caught[cp.id] ? `Đã thu thập: ${cp.name}` : `Dấu ấn ẩn tại: ${cp.spot}`));
+    mk.on('click', e => { if (calibMode) { const ll = LM.mouseEventToLatLng(e.originalEvent), q = toXZ(ll.lat, ll.lng); calibAt(q.x, q.z); return; } toast(S.caught[cp.id] ? `Đã thu thập: ${cp.name}` : `Dấu ấn ẩn tại: ${cp.spot}`); });
     lmMarks[cp.id] = { ring, mk, st: '' };
   });
   lmAcc = L.circle([demoC.lat, demoC.lon], { radius: 5, color: '#2a7fd0', weight: 1, fillOpacity: 0.15 });
@@ -383,6 +406,12 @@ $('#compass').onclick = async () => {
   if (heading == null) { toast(ok ? 'Đang chờ la bàn… thử xoay nhẹ điện thoại' : 'Máy không có la bàn — hướng sẽ lấy theo hướng bạn di chuyển'); if (DEMO && LM) { curBearing = 0; LM.setBearing(0); } else if (T) camAim = 0; setTimeout(() => { if (heading != null && !hdgUp) setHdgUp(true); }, 1500); return; }
   setHdgUp(true);
 };
+$('#calibB').onclick = () => {
+  if (calib) { calib = null; try { localStorage.removeItem(LS + '-calib'); } catch { } kf = null; renderCalib(); toast('Đã bỏ chỉnh vị trí — dùng GPS gốc'); return; }
+  calibMode = !calibMode; $('#calibB').classList.toggle('on', calibMode);
+  $('#calibB').textContent = calibMode ? '👆 Chạm vào chỗ bạn đang đứng' : '📍 Sửa vị trí';
+  if (calibMode) { lmFollow = false; toast('Chạm lên bản đồ đúng chỗ bạn đang đứng'); }
+};
 // Android: không cần xin quyền; iPhone: xin quyền khi người chơi chạm nút
 startCompass();
 setTimeout(startMotion);
@@ -390,6 +419,7 @@ addEventListener('touchend', function once() { if (!compassOn) startCompass(); i
 
 // ---------- HUD ----------
 function renderHud() {
+  if ($('#calibB') && !calibMode) renderCalib();
   $('#hName').textContent = S.name;
   $('#hSub').textContent = `${caughtCount()}/${CHECKPOINTS.length} dấu ấn` + (S.unit ? ` · ${S.unit}` : '');
   $('#hScore').textContent = `${S.score} điểm`;
@@ -546,6 +576,7 @@ function init3D() {
     ndc.set((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, camera);
     const hit = ray.intersectObjects(Object.values(markers).map(m => m.spr))[0];
     if (hit && !testMode) { const cp = hit.object.userData.cp; toast(S.caught[cp.id] ? `Đã thu thập: ${cp.name}` : `Dấu ấn ẩn tại: ${cp.spot}`); return; }
+    if (calibMode) { const p = new THREE.Vector3(); if (ray.ray.intersectPlane(ground, p)) calibAt(p.x, p.z); return; }
     if (testMode) { const p = new THREE.Vector3(); if (ray.ray.intersectPlane(ground, p)) updateMe(p.x, p.z, 4); }
   });
   controls.addEventListener('start', () => { follow = false; fly = null; if (hdgUp) setHdgUp(false, true); });
@@ -605,6 +636,19 @@ let me = null, nearCp = null, watchId = null;
 const testMode = /(^|[#&])test\b/.test(location.hash) || new URLSearchParams(location.search).has('test');
 if (testMode) document.body.classList.add('test');
 // ---- lọc vị trí GPS (Kalman) + cảm biến bước đi: đứng yên thì chấm không chạy lung tung ----
+let calib = null, calibMode = false, lastRaw = null;
+try { const c = JSON.parse(localStorage.getItem(LS + '-calib') || 'null'); if (c && Date.now() - c.t < 3 * 3600e3) calib = c; } catch { }
+function calibAt(x, z) {   // người chơi chạm vào chỗ mình đang đứng → bù độ lệch GPS
+  calibMode = false; $('#calibB').classList.remove('on');
+  if (!lastRaw && !testMode) { toast('Chưa có tín hiệu GPS để chỉnh'); return; }
+  const r = lastRaw || me; calib = { dx: x - r.x, dz: z - r.z, t: Date.now() };
+  try { localStorage.setItem(LS + '-calib', JSON.stringify(calib)); } catch { }
+  if (kf) { kf.x = x; kf.z = z; kf.v = 4; }
+  updateMe(x, z, Math.min(me ? me.acc : 5, 5)); if (disp) { disp.x = x; disp.z = z; }
+  toast(`Đã chỉnh vị trí (lệch ${Math.round(Math.hypot(calib.dx, calib.dz))} m). Game sẽ bù lệch này khi bạn di chuyển.`);
+  renderCalib();
+}
+function renderCalib() { $('#calibB').textContent = calib ? `📍 Đã chỉnh ${Math.round(Math.hypot(calib.dx, calib.dz))} m · bỏ` : '📍 Sửa vị trí'; }
 let kf = null, motionOn = false, accBuf = [], lastStepMove = 0;
 function onMotion(e) {
   const a = e.accelerationIncludingGravity; if (!a || a.x == null) return;
@@ -638,7 +682,9 @@ function startGPS() {
   if (watchId != null) return;
   watchId = navigator.geolocation.watchPosition(p => {
     if (DEMO && !demoC) { placeDemo(p.coords.latitude, p.coords.longitude); S.demoC = demoC; save(); initLeaflet(); }
-    const raw = toXZ(p.coords.latitude, p.coords.longitude), f = gpsFilter(raw.x, raw.z, p.coords.accuracy || 30, p.timestamp || Date.now());
+    const raw = toXZ(p.coords.latitude, p.coords.longitude); lastRaw = { ...raw, acc: p.coords.accuracy };
+    if (calib) { raw.x += calib.dx; raw.z += calib.dz; }
+    const f = gpsFilter(raw.x, raw.z, p.coords.accuracy || 30, p.timestamp || Date.now());
     if (!f) return;
     const { x, z } = f;
     if (hdgSrc !== 'compass' && p.coords.heading != null && !isNaN(p.coords.heading) && p.coords.speed > 0.6) setHeading(p.coords.heading, 'gps', true);
@@ -648,9 +694,10 @@ function startGPS() {
   }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
 }
 map.addEventListener('click', e => {
-  if (!testMode) return;
+  if (!testMode && !calibMode) return;
   const pt = map.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
   const p = pt.matrixTransform(map.getScreenCTM().inverse());
+  if (calibMode) { calibAt(p.x, p.y); return; }
   updateMe(p.x, p.y, 4);
 });
 // khung nhìn bản đồ: toàn cảnh hoặc phóng gần vị trí người chơi
