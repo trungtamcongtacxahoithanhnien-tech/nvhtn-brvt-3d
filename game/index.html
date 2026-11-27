@@ -55,6 +55,19 @@
   .demo .demobar { display:block; }
   .cpico { display:grid; place-items:center; width:34px; height:34px; border-radius:50%; color:#fff; font-weight:800; font-size:18px; border:3px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.4); }
   .cplbl { background:rgba(255,255,255,.92); border-radius:6px; padding:1px 5px; font-size:10.5px; font-weight:700; white-space:nowrap; transform:translate(-50%, 4px); display:inline-block; }
+  .isdemo .float .glow { background:transparent; box-shadow:none; padding:0; }
+  .float img.mascot, .glow img.mascot { width:100%; aspect-ratio:1; object-fit:contain; display:block; filter:drop-shadow(0 10px 14px rgba(0,0,0,.35)); }
+  #pgo { position:absolute; inset:0; display:none; z-index:0; touch-action:none; }
+  .pgo #pgo { display:block; } .pgo #lmap { visibility:hidden; }
+  .pgob { position:absolute; left:10px; bottom:58px; background:#fff; color:#1d4f86; box-shadow:0 2px 10px rgba(0,0,0,.2); padding:8px 12px; font-size:13px; font-weight:700; z-index:3; border-radius:18px; display:none; }
+  .demo .pgob { display:block; } .test .pgob { bottom:100px; }
+  .avpick { display:none; } .isdemo .avpick { display:block; }
+  .avpick .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0; }
+  .avpick .g { padding:8px 14px; border-radius:16px; border:2px solid #d6dde4; background:#fff; font-weight:700; }
+  .avpick .g.on { border-color:#0f8f86; background:#e6f6f4; color:#0f8f86; }
+  .avpick .sw { width:30px; height:30px; border-radius:50%; border:3px solid #fff; box-shadow:0 0 0 2px #d6dde4; padding:0; }
+  .avpick .sw.on { box-shadow:0 0 0 3px #0f8f86; }
+  .avpick img { width:96px; height:96px; display:block; margin:0 auto; }
   #map3d { position:absolute; inset:0; display:none; touch-action:none; z-index:0; }
   .compass { position:absolute; right:10px; bottom:58px; width:48px; height:48px; border-radius:50%; background:#fff; box-shadow:0 2px 10px rgba(0,0,0,.2); padding:0; z-index:3; display:grid; place-items:center; }
   .compass svg { width:40px; height:40px; transition:transform .15s linear; }
@@ -153,6 +166,11 @@
     <label class="field">Họ và tên *<input id="fName" autocomplete="name" placeholder="Nguyễn Văn A"></label>
     <label class="field">Đơn vị / Trường / Lớp<input id="fUnit" placeholder="VD: Đoàn trường THPT…"></label>
     <label class="field">Số điện thoại (để liên hệ trao quà, không hiển thị công khai)<input id="fPhone" type="tel" inputmode="tel" placeholder="Không bắt buộc"></label>
+    <div class="field avpick">Nhân vật của bạn
+      <img id="avPrev" alt="">
+      <div class="row"><button class="g on" data-g="nam">👦 Nam</button><button class="g" data-g="nu">👧 Nữ</button></div>
+      <div class="row" id="avSw"></div>
+    </div>
     <button class="btn" id="goBtn">Bắt đầu hành trình ➜</button>
     <div class="note">Trò chơi sẽ xin quyền <b>vị trí</b> để biết bạn đang ở đâu trong khuôn viên và quyền <b>camera</b> khi dấu ấn xuất hiện. Nếu GPS yếu, hãy quét mã QR đặt tại mỗi điểm.</div>
   </div>
@@ -168,6 +186,8 @@
     <svg id="map" viewBox="-106 -42 140 100" preserveAspectRatio="xMidYMid meet"></svg>
     <div class="status" id="status">Đang tìm vị trí của bạn…</div>
     <div id="lmap"></div>
+    <div id="pgo"></div>
+    <button class="pgob" id="pgoB">🛰️ Ảnh vệ tinh</button>
     <div class="demobar" id="demoBar"></div>
     <div id="map3d"></div>
     <button class="compass" id="compass" aria-label="La bàn — chạm để xoay bản đồ theo hướng điện thoại"><svg viewBox="-20 -20 40 40" id="needle"><circle r="18" fill="#fff" stroke="#d6dde4" stroke-width="1"/><path d="M0 -15 L5 0 L-5 0Z" fill="#e0352b"/><path d="M0 15 L5 0 L-5 0Z" fill="#9aa5b1"/><circle r="1.8" fill="#fff"/><text y="-8.5" font-size="0" fill="#fff"></text><text x="0" y="-16.2" font-size="5.2" text-anchor="middle" font-weight="800" fill="#e0352b" dy="-0.4">B</text></svg></button>
@@ -203,7 +223,8 @@
 <canvas class="confetti" id="confetti"></canvas>
 
 <script type="module">
-import { CONFIG, CHECKPOINTS, ICONS, RARITY, PHOTOS, GEO, latLonToXZ } from './data.js?v=5';
+import { CONFIG, CHECKPOINTS, ICONS, RARITY, PHOTOS, GEO, latLonToXZ, DEMO_EXTRA } from './data.js?v=6';
+import { createWorld, mascotImage, avatarImage, SHIRTS, mascotName } from './demo3d.js?v=2';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildScene } from '../scene.js?v=7';
@@ -214,6 +235,8 @@ const QP = new URLSearchParams(location.search);
 const DEMO = QP.has('demo') ? (() => { const v = QP.get('demo') || 'here'; const [la, lo] = v.split(',').map(Number);
   return { here: !(isFinite(la) && isFinite(lo)), lat: la, lon: lo, r: +(QP.get('r') || 5), s: +(QP.get('s') || 10), rot: +(QP.get('rot') || 0) }; })() : null;
 const LS = DEMO ? 'nvhtn-hanhtrinh-demo' : 'nvhtn-hanhtrinh-v1';
+if (DEMO) { CHECKPOINTS.push(...DEMO_EXTRA); document.documentElement.classList.add('isdemo'); }
+CHECKPOINTS.forEach(c => c.color = RARITY[c.rarity].color);
 if (DEMO) { CONFIG.CATCH_RADIUS = DEMO.r; CONFIG.SHEET_API = ''; document.title = 'DEMO – ' + document.title; }
 const D_MLON = lat => 111320 * Math.cos(lat * Math.PI / 180);
 let demoC = null; // tâm demo {lat, lon}
@@ -225,12 +248,15 @@ const azToXZ = a => [Math.cos((a - FR.xAz) * RAD), Math.cos((a - FR.zAz) * RAD)]
 const xzToAz = (vx, vz) => norm(Math.atan2(vx * Math.sin(FR.xAz * RAD) + vz * Math.sin(FR.zAz * RAD), vx * Math.cos(FR.xAz * RAD) + vz * Math.cos(FR.zAz * RAD)) / RAD);
 function placeDemo(lat, lon) {
   demoC = { lat, lon };
-  const grid = [[0, 0], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]]; // [Đông, Bắc]
+  // lưới vuông đủ chỗ cho mọi điểm, xếp từ gần tâm ra ngoài; [Đông, Bắc]
+  const n = CHECKPOINTS.length, cols = Math.ceil(Math.sqrt(n)), off = (cols - 1) / 2, grid = [];
+  for (let a = 0; a < cols; a++) for (let b = 0; b < cols; b++) grid.push([a - off, b - off]);
+  grid.sort((p, q) => Math.hypot(...p) - Math.hypot(...q) || Math.atan2(p[0], p[1]) - Math.atan2(q[0], q[1]));
   CHECKPOINTS.forEach((cp, i) => {
     const [gx, gy] = grid[i], th = DEMO.rot * Math.PI / 180; // xoay lưới theo chiều kim đồng hồ
     const e = (gx * Math.cos(th) + gy * Math.sin(th)) * DEMO.s, n = (-gx * Math.sin(th) + gy * Math.cos(th)) * DEMO.s, dx = e, dy = n;
     cp.x = e; cp.z = -n; cp.lat = lat + n / 110574; cp.lon = lon + e / D_MLON(lat);
-    if (i === 0) cp.spot = 'Điểm giữa (chỗ bắt đầu)';
+    if (Math.hypot(e, n) < 0.5) cp.spot = 'Điểm giữa (chỗ bắt đầu)';
     else { const az = (Math.atan2(e, n) * 180 / Math.PI + 360) % 360; cp.spot = `${HUONG8[Math.round(az / 45) % 8]}, cách điểm giữa ${Math.round(Math.hypot(e, n))} m`; }
   });
 }
@@ -242,19 +268,28 @@ function save() { try { localStorage.setItem(LS, JSON.stringify(S)); } catch { }
 const cpById = id => CHECKPOINTS.find(c => c.id === +id);
 const caughtCount = () => Object.keys(S?.caught || {}).length;
 function toast(t, ms = 2200) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), ms); }
-const icon = (cp) => `<svg viewBox="0 0 120 104">${ICONS[cp.icon]}</svg>`;
+const icon = (cp) => DEMO ? `<img class="mascot" src="${mascotImage(cp.icon)}" alt="${mascotName(cp.icon)}">` : `<svg viewBox="0 0 120 104">${ICONS[cp.icon]}</svg>`;
 // ảnh thật (nếu tải lỗi thì quay về hình vẽ)
 const photo = (cp) => { const ph = PHOTOS[cp.icon]; return ph ? `<img class="ph" src="${ph.src}" alt="${cp.name}" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML=window.__svgOf(${cp.id})">` : icon(cp); };
 window.__svgOf = id => { const c = cpById(id); return `<svg viewBox="0 0 120 104">${ICONS[c.icon]}</svg>`; };
 const credit = (cp) => { const ph = PHOTOS[cp.icon]; if (!ph) return ''; const t = `Ảnh: ${esc(ph.by)} · ${esc(ph.lic)}${ph.note ? ' · ' + esc(ph.note) : ''}`; return ph.page ? `<a href="${ph.page}" target="_blank" rel="noopener">${t}</a>` : t; };
 
 // ---------- bắt đầu ----------
+const avSel = { gender: 'nam', shirt: SHIRTS[0] };
+if (DEMO) {
+  const sw = $('#avSw');
+  SHIRTS.forEach((c, i) => { const b = document.createElement('button'); b.className = 'sw' + (i ? '' : ' on'); b.style.background = c; b.setAttribute('aria-label', 'Màu áo ' + (i + 1)); b.onclick = () => { avSel.shirt = c; sw.querySelectorAll('.sw').forEach(x => x.classList.toggle('on', x === b)); avPrev(); }; sw.appendChild(b); });
+  document.querySelectorAll('.avpick .g').forEach(b => b.onclick = () => { avSel.gender = b.dataset.g; document.querySelectorAll('.avpick .g').forEach(x => x.classList.toggle('on', x === b)); avPrev(); });
+  const avPrev = () => { try { $('#avPrev').src = avatarImage(avSel); } catch { } };
+  setTimeout(avPrev, 50);
+  document.querySelector('#start p').innerHTML = `Đi quanh khu vực để tìm và thu thập <b>${CHECKPOINTS.length} linh vật</b> — mỗi linh vật là một dấu ấn của TP.HCM mới. Chạm vào linh vật khi đến gần, tìm nó qua camera rồi trả lời câu hỏi để thu thập.`;
+}
 function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); }
 $('#goBtn').onclick = () => {
   const name = $('#fName').value.trim();
   if (name.length < 2) { toast('Bạn nhập họ tên nhé'); $('#fName').focus(); return; }
   S = { pid: Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4), name, unit: $('#fUnit').value.trim(), phone: $('#fPhone').value.trim(),
-        start: Date.now(), caught: {}, score: 0, finishedAt: null, redeemed: false };
+        start: Date.now(), caught: {}, score: 0, finishedAt: null, redeemed: false, avatar: { ...avSel } };
   save(); sync(); enterPlay();
 };
 function enterPlay() {
@@ -263,7 +298,7 @@ function enterPlay() {
     document.querySelector('.mapwrap').classList.add('demo');
     const c = (S.demoMine && S.demoC) || (!DEMO.here ? { lat: DEMO.lat, lon: DEMO.lon } : S.demoC);
     if (c) { placeDemo(c.lat, c.lon); S.demoC = c; save(); initLeaflet(); }
-    $('#demoBar').innerHTML = `🧪 <b>Bản demo</b> · 9 điểm cách nhau ${DEMO.s} m · bắt trong ${DEMO.r} m · không ghi bảng xếp hạng` + (c ? '' : ' · đang chờ GPS để đặt điểm quanh bạn…') + ` · <a href="#" id="demoHere">Đặt điểm quanh tôi</a> · <a href="#" id="demoReset">Làm lại</a>`;
+    $('#demoBar').innerHTML = `🧪 <b>Bản demo</b> · ${CHECKPOINTS.length} điểm cách nhau ${DEMO.s} m · bắt trong ${DEMO.r} m · không ghi bảng xếp hạng` + (c ? '' : ' · đang chờ GPS để đặt điểm quanh bạn…') + ` · <a href="#" id="demoHere">Đặt điểm quanh tôi</a> · <a href="#" id="demoReset">Làm lại</a>`;
     $('#demoHere').onclick = e => { e.preventDefault(); if (!me) { toast('Chưa có vị trí của bạn'); return; } const ll = xzToLL(me.x, me.z); S.demoC = { lat: ll[0], lon: ll[1] }; S.demoMine = true; S.caught = {}; S.score = 0; save(); try { localStorage.removeItem(LS + '-calib'); } catch { } location.reload(); };
     $('#demoReset').onclick = e => { e.preventDefault(); try { localStorage.removeItem(LS); } catch { } location.reload(); };
     startGPS(); handleHash(); return;
@@ -316,6 +351,31 @@ const GoogleLayer = L.Layer.extend({
     o._frame.addEventListener('load', () => setTimeout(() => { if (this._next !== o) return; if (this._cur) this._cur.remove(); this._cur = o; this._next = null; }, 600));
   },
 });
+let W3 = null, pgoOn = true;
+function initWorld() {
+  if (W3) return;
+  try {
+    W3 = createWorld({ host: $('#pgo'), center: demoC, toXZ: (la, lo) => toXZ(la, lo), cps: CHECKPOINTS,
+      getState: () => ({ pos: disp, heading, hdgUp, caught: S.caught, radius: CONFIG.CATCH_RADIUS }),
+      onFrame: () => { if (pgoOn) renderCompass(); },
+      onTapGround: (x, z) => { if (testMode) updateMe(x, z, 3); },
+      onTapCp: cp => {
+        if (S.caught[cp.id]) { toast(`Đã thu thập ${mascotName(cp.icon)} (${cp.name})`); return; }
+        if (!me) { toast('Đang chờ GPS…'); return; }
+        const d = Math.hypot(me.x - cp.x, me.z - cp.z), r = CONFIG.CATCH_RADIUS;
+        if (d <= r) openEncounter(cp, 'gps'); else toast(`${mascotName(cp.icon)} ở ${cp.spot} — lại gần thêm khoảng ${Math.ceil(d - r)} m`);
+      } });
+    W3.setAvatar(S.avatar || avSel);
+    $('.mapwrap').classList.add('pgo');
+  } catch (e) { console.error(e); W3 = null; pgoOn = false; }
+}
+$('#pgoB').onclick = () => {
+  if (!W3) return;
+  pgoOn = !pgoOn; $('.mapwrap').classList.toggle('pgo', pgoOn); W3.setActive(pgoOn);
+  $('#pgoB').textContent = pgoOn ? '🛰️ Ảnh vệ tinh' : '🎮 Bản đồ hoạt hình';
+  if (!pgoOn && LM) setTimeout(() => LM.invalidateSize(), 50);
+  renderCompass();
+};
 function initLeaflet() {
   if (LM || !window.L) return;
   LM = L.map('lmap', { zoomControl: false, attributionControl: true, maxZoom: 21, minZoom: 15, rotate: true, rotateControl: false, touchRotate: true, bearing: 0 }).setView([demoC.lat, demoC.lon], 20);
@@ -337,6 +397,7 @@ function initLeaflet() {
   lmAcc = L.circle([demoC.lat, demoC.lon], { radius: 5, color: '#2a7fd0', weight: 1, fillOpacity: 0.15 });
   lmMe = L.marker([demoC.lat, demoC.lon], { interactive: false, zIndexOffset: 1000, icon: L.divIcon({ className: '', iconSize: [0, 0], html: `<div class="meico" id="lmMeIco">${CONE_SVG}<div class="dot"></div></div>` }) });
   LM.on('rotate', renderCompass);
+  setTimeout(initWorld, 0);
   updateLeafletMarkers(nearCp);
   setTimeout(() => LM.invalidateSize(), 100);
 }
@@ -375,7 +436,7 @@ function startCompass() {
   return Promise.resolve(DOE ? attach() : false);
 }
 function viewUpAz() {   // hướng (độ) đang nằm ở phía trên màn hình
-  if (DEMO) return LM ? norm(-LM.getBearing()) : 0;
+  if (DEMO) return pgoOn && W3 ? W3.upAz() : (LM ? norm(-LM.getBearing()) : 0);
   if (mode3d && T) return T.upAz();
   return xzToAz(0, -1);
 }
@@ -395,14 +456,14 @@ function renderHeading() {
 function setHdgUp(on, quiet) {
   hdgUp = on; $('#compass').classList.toggle('up', on);
   if (on) renderHeading();
-  else { if (DEMO && LM) { curBearing = 0; LM.setBearing(0); } else if (mode3d && T && !quiet) camAim = 0; }
+  else { if (W3) W3.setAim(0); if (DEMO && LM) { curBearing = 0; LM.setBearing(0); } else if (mode3d && T && !quiet) camAim = 0; }
   if (!quiet) toast(on ? 'Bản đồ xoay theo hướng điện thoại' : 'Bản đồ hướng Bắc lên trên');
 }
 $('#compass').onclick = async () => {
   startMotion(); const ok = await startCompass();
   if (hdgUp) { setHdgUp(false); return; }
   if (!DEMO && !mode3d) { toast(heading != null ? `Điện thoại đang hướng về ${HUONG8[Math.round(heading / 45) % 8]} — chuyển sang 3D để xoay bản đồ theo hướng` : 'Chuyển sang 3D để xoay bản đồ theo hướng'); return; }
-  if (heading == null) { toast(ok ? 'Đang chờ la bàn… thử xoay nhẹ điện thoại' : 'Máy không có la bàn — hướng sẽ lấy theo hướng bạn di chuyển'); if (DEMO && LM) { curBearing = 0; LM.setBearing(0); } else if (T) camAim = 0; setTimeout(() => { if (heading != null && !hdgUp) setHdgUp(true); }, 1500); return; }
+  if (heading == null) { toast(ok ? 'Đang chờ la bàn… thử xoay nhẹ điện thoại' : 'Máy không có la bàn — hướng sẽ lấy theo hướng bạn di chuyển'); if (W3) W3.setAim(0); if (DEMO && LM) { curBearing = 0; LM.setBearing(0); } else if (T) camAim = 0; setTimeout(() => { if (heading != null && !hdgUp) setHdgUp(true); }, 1500); return; }
   setHdgUp(true);
 };
 // Android: không cần xin quyền; iPhone: xin quyền khi người chơi chạm nút
@@ -722,7 +783,7 @@ function fitView() {
   }
   $('#zoomB').textContent = viewMode === 'me' ? '⤢ Toàn cảnh' : '◎ Gần tôi';
 }
-$('#zoomB').onclick = () => { if (DEMO && LM) { lmFollow = !lmFollow; if (lmFollow && me) LM.setView(xzToLL(me.x, me.z), 20); else LM.fitBounds(L.latLngBounds(CHECKPOINTS.map(c => [c.lat, c.lon])).pad(0.4)); $('#zoomB').textContent = lmFollow ? '⤢ Toàn cảnh' : '◎ Gần tôi'; return; } if (!me && viewMode === 'all') { toast('Chưa có vị trí của bạn'); return; } viewMode = viewMode === 'me' ? 'all' : 'me'; fitView(); if (T) T.flyHome(); };
+$('#zoomB').onclick = () => { if (DEMO && W3 && pgoOn) { $('#zoomB').textContent = W3.toggleZoom() ? '◎ Gần tôi' : '⤢ Toàn cảnh'; return; } if (DEMO && LM) { lmFollow = !lmFollow; if (lmFollow && me) LM.setView(xzToLL(me.x, me.z), 20); else LM.fitBounds(L.latLngBounds(CHECKPOINTS.map(c => [c.lat, c.lon])).pad(0.4)); $('#zoomB').textContent = lmFollow ? '⤢ Toàn cảnh' : '◎ Gần tôi'; return; } if (!me && viewMode === 'all') { toast('Chưa có vị trí của bạn'); return; } viewMode = viewMode === 'me' ? 'all' : 'me'; fitView(); if (T) T.flyHome(); };
 addEventListener('resize', fitView);
 function setStatus(h) { $('#status').innerHTML = h; }
 // vòng lặp hoạt ảnh: chấm vị trí trượt mượt tới vị trí GPS mới, bản đồ đi theo, xoay mượt theo hướng
@@ -784,15 +845,16 @@ async function openEncounter(cp, via) {
   if (via === 'qr') anchorAt(cp);
   if (S.caught[cp.id]) { toast(`Bạn đã có dấu ấn "${cp.name}" rồi!`); return; }
   encCp = cp; const R = RARITY[cp.rarity];
-  $('#encPic').innerHTML = photo(cp);
-  $('#encCredit').innerHTML = credit(cp);
-  $('#encName').textContent = cp.name;
+  $('#encPic').innerHTML = DEMO ? icon(cp) : photo(cp);
+  $('#encCredit').innerHTML = DEMO ? '' : credit(cp);
+  $('#encName').textContent = DEMO ? `${mascotName(cp.icon)} · ${cp.name}` : cp.name;
   const rr = $('#encRar'); rr.textContent = `${R.name} · ${cp.region}`; rr.style.background = R.color;
   $('#encFloat').style.setProperty('--rc', R.color); $('#encFloat').classList.remove('caught');
   $('#encWhere').textContent = `📍 ${cp.spot}${via === 'qr' ? ' · QR' : ''}`;
   $('#enc').classList.add('on');
   if (via === 'gps' && me) startSeek(cp); else revealMark(cp);
   if (T) T.renderer.setAnimationLoop(null);
+  if (W3) W3.setActive(false);
   try {
     encStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
     const v = $('#encVideo'); v.srcObject = encStream; v.style.display = 'block'; await v.play();
@@ -852,6 +914,7 @@ function closeEncounter() {
   stopSeek();
   $('#enc').classList.remove('on');
   if (T && mode3d) T.renderer.setAnimationLoop(T.loop);
+  if (W3 && pgoOn) W3.setActive(true);
   if (encStream) { encStream.getTracks().forEach(t => t.stop()); encStream = null; }
 }
 $('#encClose').onclick = closeEncounter;
