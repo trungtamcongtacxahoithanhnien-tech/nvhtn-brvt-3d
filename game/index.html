@@ -7,6 +7,8 @@
 <title>Hành trình Thành phố tôi yêu – Nhà Văn hóa Thanh niên</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -46,6 +48,12 @@
   .status b { color:var(--accent2); }
   .zoomb { position:absolute; right:10px; bottom:10px; background:#fff; color:var(--ink); box-shadow:0 2px 10px rgba(0,0,0,.15); padding:10px 13px; font-size:13px; }
   .test .zoomb { bottom:52px; }
+  #lmap { position:absolute; inset:0; display:none; z-index:0; }
+  .demo #lmap { display:block; } .demo #map, .demo #map3d, .demo #modeB { display:none !important; }
+  .demobar { display:none; position:absolute; left:10px; right:10px; top:62px; background:#e8f4ff; border:1px solid #9cc7ef; border-radius:10px; padding:6px 10px; font-size:12px; z-index:2; }
+  .demo .demobar { display:block; }
+  .cpico { display:grid; place-items:center; width:34px; height:34px; border-radius:50%; color:#fff; font-weight:800; font-size:18px; border:3px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.4); }
+  .cplbl { background:rgba(255,255,255,.92); border-radius:6px; padding:1px 5px; font-size:10.5px; font-weight:700; white-space:nowrap; transform:translate(-50%, 4px); display:inline-block; }
   #map3d { position:absolute; inset:0; display:none; touch-action:none; z-index:0; }
   .status, .zoomb, .modeb, .testbar { z-index:2; }
   #map3d canvas { display:block; width:100%; height:100%; }
@@ -138,6 +146,8 @@
   <div class="mapwrap">
     <svg id="map" viewBox="-106 -42 140 100" preserveAspectRatio="xMidYMid meet"></svg>
     <div class="status" id="status">Đang tìm vị trí của bạn…</div>
+    <div id="lmap"></div>
+    <div class="demobar" id="demoBar"></div>
     <div id="map3d"></div>
     <button class="zoomb" id="zoomB">◎ Gần tôi</button>
     <button class="modeb" id="modeB">🗺 Bản đồ 2D</button>
@@ -175,7 +185,27 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildScene } from '../scene.js?v=7';
 
 const $ = s => document.querySelector(s);
-const LS = 'nvhtn-hanhtrinh-v1';
+// ---------- CHẾ ĐỘ DEMO: ?demo=lat,lon (hoặc ?demo=here) &r=bán kính &s=khoảng cách ----------
+const QP = new URLSearchParams(location.search);
+const DEMO = QP.has('demo') ? (() => { const v = QP.get('demo') || 'here'; const [la, lo] = v.split(',').map(Number);
+  return { here: !(isFinite(la) && isFinite(lo)), lat: la, lon: lo, r: +(QP.get('r') || 5), s: +(QP.get('s') || 10) }; })() : null;
+const LS = DEMO ? 'nvhtn-hanhtrinh-demo' : 'nvhtn-hanhtrinh-v1';
+if (DEMO) { CONFIG.CATCH_RADIUS = DEMO.r; CONFIG.SHEET_API = ''; document.title = 'DEMO – ' + document.title; }
+const D_MLON = lat => 111320 * Math.cos(lat * Math.PI / 180);
+let demoC = null; // tâm demo {lat, lon}
+const HUONG8 = ['Bắc', 'Đông Bắc', 'Đông', 'Đông Nam', 'Nam', 'Tây Nam', 'Tây', 'Tây Bắc'];
+function placeDemo(lat, lon) {
+  demoC = { lat, lon };
+  const grid = [[0, 0], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]]; // [Đông, Bắc]
+  CHECKPOINTS.forEach((cp, i) => {
+    const [dx, dy] = grid[i], e = dx * DEMO.s, n = dy * DEMO.s;
+    cp.x = e; cp.z = -n; cp.lat = lat + n / 110574; cp.lon = lon + e / D_MLON(lat);
+    if (i === 0) cp.spot = 'Điểm giữa (chỗ bắt đầu)';
+    else { const az = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360; cp.spot = `${HUONG8[Math.round(az / 45) % 8]}, cách điểm giữa ${Math.round(Math.hypot(e, n))} m`; }
+  });
+}
+// toạ độ GPS → mét (demo: x = Đông, z = −Bắc)
+const toXZ = (la, lo) => DEMO ? { x: (lo - demoC.lon) * D_MLON(demoC.lat), z: -(la - demoC.lat) * 110574 } : latLonToXZ(la, lo);
 let S = load();
 function load() { try { return JSON.parse(localStorage.getItem(LS)) || null; } catch { return null; } }
 function save() { try { localStorage.setItem(LS, JSON.stringify(S)); } catch { } }
@@ -197,7 +227,56 @@ $('#goBtn').onclick = () => {
         start: Date.now(), caught: {}, score: 0, finishedAt: null, redeemed: false };
   save(); sync(); enterPlay();
 };
-function enterPlay() { show('play'); renderHud(); drawMap(); fitView(); setMode(mode3d); startGPS(); handleHash(); }
+function enterPlay() {
+  show('play'); renderHud();
+  if (DEMO) {
+    document.querySelector('.mapwrap').classList.add('demo');
+    const c = S.demoC || (!DEMO.here ? { lat: DEMO.lat, lon: DEMO.lon } : null);
+    if (c) { placeDemo(c.lat, c.lon); S.demoC = c; save(); initLeaflet(); }
+    $('#demoBar').innerHTML = `🧪 <b>Bản demo</b> · 9 điểm cách nhau ${DEMO.s} m · bắt trong ${DEMO.r} m · không ghi bảng xếp hạng` + (c ? '' : ' · đang chờ GPS để đặt điểm quanh bạn…') + ` · <a href="#" id="demoReset">Làm lại</a>`;
+    $('#demoReset').onclick = e => { e.preventDefault(); try { localStorage.removeItem(LS); } catch { } location.reload(); };
+    startGPS(); handleHash(); return;
+  }
+  drawMap(); fitView(); setMode(mode3d); startGPS(); handleHash();
+}
+// ---------- bản đồ thật (Leaflet) cho bản demo ----------
+let LM = null, lmMe = null, lmAcc = null, lmFollow = true, lmMarks = {};
+const xzToLL = (x, z) => [demoC.lat - z / 110574, demoC.lon + x / D_MLON(demoC.lat)];
+function initLeaflet() {
+  if (LM || !window.L) return;
+  LM = L.map('lmap', { zoomControl: false, attributionControl: true, maxZoom: 21 }).setView([demoC.lat, demoC.lon], 20);
+  const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 19, maxZoom: 21, attribution: 'Ảnh vệ tinh © Esri, Maxar' }).addTo(LM);
+  const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 21, attribution: '© OpenStreetMap' });
+  L.control.layers({ 'Vệ tinh': sat, 'Bản đồ': osm }, null, { position: 'bottomleft' }).addTo(LM);
+  LM.on('dragstart', () => { lmFollow = false; $('#zoomB').textContent = '◎ Gần tôi'; });
+  LM.on('click', e => { if (testMode) { const { x, z } = toXZ(e.latlng.lat, e.latlng.lng); updateMe(x, z, 3); } });
+  CHECKPOINTS.forEach(cp => {
+    const col = RARITY[cp.rarity].color;
+    const ring = L.circle([cp.lat, cp.lon], { radius: CONFIG.CATCH_RADIUS, color: col, weight: 2, dashArray: '4 4', fillColor: col, fillOpacity: 0.08 }).addTo(LM);
+    const mk = L.marker([cp.lat, cp.lon], { icon: L.divIcon({ className: '', iconSize: [34, 34], iconAnchor: [17, 17], html: '' }) }).addTo(LM);
+    mk.on('click', () => toast(S.caught[cp.id] ? `Đã thu thập: ${cp.name}` : `Dấu ấn ẩn tại: ${cp.spot}`));
+    lmMarks[cp.id] = { ring, mk, st: '' };
+  });
+  lmAcc = L.circle([demoC.lat, demoC.lon], { radius: 5, color: '#2a7fd0', weight: 1, fillOpacity: 0.15 });
+  lmMe = L.circleMarker([demoC.lat, demoC.lon], { radius: 8, color: '#fff', weight: 3, fillColor: '#2a7fd0', fillOpacity: 1 });
+  updateLeafletMarkers(nearCp);
+  setTimeout(() => LM.invalidateSize(), 100);
+}
+function updateLeafletMarkers(near) {
+  if (!LM) return;
+  CHECKPOINTS.forEach(cp => {
+    const m = lmMarks[cp.id], got = !!S.caught[cp.id], isNear = !!near && near.id === cp.id, st = `${got}|${isNear}`, col = RARITY[cp.rarity].color;
+    if (m.st === st) return; m.st = st;
+    m.mk.setIcon(L.divIcon({ className: '', iconSize: [34, 34], iconAnchor: [17, 17], html: `<div class="cpico" style="background:${got ? '#2f9e6e' : (isNear ? col : '#1d2733')};border-color:${col}">${got ? '✓' : '?'}</div><span class="cplbl">${got ? cp.name : 'Điểm ' + cp.id}</span>` }));
+    m.ring.setStyle({ fillOpacity: isNear ? 0.3 : (got ? 0.02 : 0.08), opacity: got ? 0.4 : 1 });
+  });
+}
+function moveLeafletMe(x, z, acc) {
+  const ll = xzToLL(x, z);
+  if (!LM.hasLayer(lmMe)) { lmAcc.addTo(LM); lmMe.addTo(LM); }
+  lmMe.setLatLng(ll); lmAcc.setLatLng(ll); lmAcc.setRadius(Math.min(acc, 60));
+  if (lmFollow) LM.panTo(ll, { animate: true });
+}
 
 // ---------- HUD ----------
 function renderHud() {
@@ -247,6 +326,8 @@ function drawMap() {
 }
 function drawCps(near) {
   if (T) updateMarkers(near);
+  if (LM) updateLeafletMarkers(near);
+  if (!gCps) return;
   gCps.innerHTML = '';
   CHECKPOINTS.forEach(cp => {
     const got = !!S.caught[cp.id], rc = RARITY[cp.rarity].color, isNear = near && near.id === cp.id;
@@ -394,7 +475,8 @@ function startGPS() {
   if (!('geolocation' in navigator)) { setStatus('Thiết bị không hỗ trợ GPS — hãy dùng <b>Quét QR</b> tại mỗi điểm.'); return; }
   if (watchId != null) return;
   watchId = navigator.geolocation.watchPosition(p => {
-    const { x, z } = latLonToXZ(p.coords.latitude, p.coords.longitude);
+    if (DEMO && !demoC) { placeDemo(p.coords.latitude, p.coords.longitude); S.demoC = demoC; save(); initLeaflet(); }
+    const { x, z } = toXZ(p.coords.latitude, p.coords.longitude);
     updateMe(x, z, p.coords.accuracy);
   }, err => {
     setStatus(err.code === 1 ? 'Bạn chưa cho phép truy cập vị trí. Hãy bật quyền vị trí cho trang này, hoặc dùng <b>Quét QR</b>.' : 'Chưa lấy được vị trí GPS — thử ra chỗ thoáng, hoặc dùng <b>Quét QR</b>.');
@@ -409,6 +491,7 @@ map.addEventListener('click', e => {
 // khung nhìn bản đồ: toàn cảnh hoặc phóng gần vị trí người chơi
 let viewMode = 'all', autoZoomed = false;
 function fitView() {
+  if (DEMO) { $('#zoomB').textContent = lmFollow ? '⤢ Toàn cảnh' : '◎ Gần tôi'; return; }
   const W = map.clientWidth || 1, H = map.clientHeight || 1, ar = H / W;
   if (viewMode === 'me' && me) {
     const w = W < H ? 62 : 100, h = w * ar;
@@ -420,17 +503,18 @@ function fitView() {
   }
   $('#zoomB').textContent = viewMode === 'me' ? '⤢ Toàn cảnh' : '◎ Gần tôi';
 }
-$('#zoomB').onclick = () => { if (!me && viewMode === 'all') { toast('Chưa có vị trí của bạn'); return; } viewMode = viewMode === 'me' ? 'all' : 'me'; fitView(); if (T) T.flyHome(); };
+$('#zoomB').onclick = () => { if (DEMO && LM) { lmFollow = !lmFollow; if (lmFollow && me) LM.setView(xzToLL(me.x, me.z), 20); else LM.fitBounds(L.latLngBounds(CHECKPOINTS.map(c => [c.lat, c.lon])).pad(0.4)); $('#zoomB').textContent = lmFollow ? '⤢ Toàn cảnh' : '◎ Gần tôi'; return; } if (!me && viewMode === 'all') { toast('Chưa có vị trí của bạn'); return; } viewMode = viewMode === 'me' ? 'all' : 'me'; fitView(); if (T) T.flyHome(); };
 addEventListener('resize', fitView);
 function setStatus(h) { $('#status').innerHTML = h; }
 function updateMe(x, z, acc) {
   me = { x, z, acc };
-  gPlayer.setAttribute('display', ''); gPlayer.setAttribute('transform', `translate(${x} ${z})`);
-  gPlayer.querySelector('#acc').setAttribute('r', Math.min(acc, 40));
+  if (gPlayer) { gPlayer.setAttribute('display', ''); gPlayer.setAttribute('transform', `translate(${x} ${z})`);
+  gPlayer.querySelector('#acc').setAttribute('r', Math.min(acc, 40)); }
   if (T) moveAvatar(x, z, acc);
+  if (LM) moveLeafletMe(x, z, acc);
   if (!autoZoomed && map.clientWidth < map.clientHeight && x > -110 && x < 40 && z > -45 && z < 60) { autoZoomed = true; viewMode = 'me'; }
   fitView();
-  const inSite = x > -110 && x < 40 && z > -45 && z < 60;
+  const inSite = DEMO ? Math.hypot(x, z) < 80 : (x > -110 && x < 40 && z > -45 && z < 60);
   // dấu ấn gần nhất chưa thu thập
   let best = null;
   CHECKPOINTS.forEach(cp => { if (S.caught[cp.id]) return; const d = Math.hypot(cp.x - x, cp.z - z); if (!best || d < best.d) best = { cp, d }; });
@@ -439,7 +523,7 @@ function updateMe(x, z, acc) {
   drawCps(nearCp);
   $('#bCatch').classList.toggle('hot', !!nearCp);
   const accTxt = `GPS ±${Math.round(acc)} m`;
-  if (!inSite) setStatus(`Bạn đang ở ngoài khuôn viên Nhà Văn hóa (${accTxt}). Hãy đến <b>160 Hạ Long, Vũng Tàu</b> để bắt đầu.`);
+  if (!inSite) setStatus(DEMO ? `Bạn đang ở xa khu demo (${accTxt}). Hãy đến gần các vòng tròn trên bản đồ.` : `Bạn đang ở ngoài khuôn viên Nhà Văn hóa (${accTxt}). Hãy đến <b>160 Hạ Long, Vũng Tàu</b> để bắt đầu.`);
   else if (!best) setStatus('🎉 Bạn đã thu thập đủ dấu ấn! Mở <b>Sổ tay</b> để nhận quà.');
   else if (nearCp) setStatus(`✨ <b>Có dấu ấn ở gần!</b> Bấm <b>Bắt dấu ấn</b> ngay. <span style="color:#5f6b78">(${accTxt})</span>`);
   else setStatus(`Dấu ấn gần nhất: <b>${best.cp.spot}</b> — cách khoảng <b>${Math.round(best.d)} m</b>. <span style="color:#5f6b78">${accTxt}${acc > 25 ? ' · GPS yếu, có thể dùng Quét QR' : ''}</span>`);
