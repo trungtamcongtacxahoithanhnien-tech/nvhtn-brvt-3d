@@ -648,14 +648,27 @@ function showRaw(x, z) {   // chấm xám: vị trí GPS gốc (chưa lọc) đ�
 function calibAt(x, z) {   // người chơi chạm vào chỗ mình đang đứng → bù độ lệch GPS
   calibMode = false; $('#calibB').classList.remove('on');
   if (!lastRaw && !testMode) { toast('Chưa có tín hiệu GPS để chỉnh'); return; }
-  const r = lastRaw || me; calib = { dx: x - r.x, dz: z - r.z, t: Date.now() };
-  try { localStorage.setItem(LS + '-calib', JSON.stringify(calib)); } catch { }
-  if (kf) { kf.x = x; kf.z = z; kf.v = 4; }
-  updateMe(x, z, Math.min(me ? me.acc : 5, 5)); if (disp) { disp.x = x; disp.z = z; }
-  toast(`Đã chỉnh vị trí (lệch ${Math.round(Math.hypot(calib.dx, calib.dz))} m). Game sẽ bù lệch này khi bạn di chuyển.`);
+  const r = lastRaw || me; setCalib(x - r.x, z - r.z, { x, z, id: null }, 'tap');
+  if (calib) toast(`Đã chỉnh vị trí (lệch ${Math.round(Math.hypot(calib.dx, calib.dz))} m). Game sẽ bù lệch này khi bạn di chuyển.`);
   renderCalib();
 }
-function renderCalib() { $('#calibB').textContent = calib ? `📍 Đã chỉnh ${Math.round(Math.hypot(calib.dx, calib.dz))} m · bỏ` : '📍 Sửa vị trí'; }
+// Quét QR tại một điểm = biết chính xác người chơi đang đứng ở đó → tự chỉnh GPS theo điểm này
+let pendingAnchor = null;
+function anchorAt(cp) {
+  if (lastRaw && Date.now() - lastRaw.t < 20000) setCalib(cp.x - lastRaw.x, cp.z - lastRaw.z, cp, 'qr');
+  else pendingAnchor = { cp, t: Date.now() };   // chưa có GPS: chỉnh khi có tín hiệu đầu tiên (trong 60 giây)
+}
+function setCalib(dx, dz, cp, how) {
+  if (Math.hypot(dx, dz) > 60) { if (how === 'qr') toast('GPS đang lệch quá xa điểm QR — chưa tự chỉnh vị trí'); return; }   // có thể quét QR từ ảnh chụp ở nơi khác
+  calib = { dx, dz, t: Date.now(), cp: cp ? cp.id : null };
+  try { localStorage.setItem(LS + '-calib', JSON.stringify(calib)); } catch { }
+  const x = cp.x, z = cp.z;
+  if (kf) { kf.x = x; kf.z = z; kf.v = 4; kf.far = 0; }
+  updateMe(x, z, 4); if (disp) { disp.x = x; disp.z = z; }
+  renderCalib();
+  if (how === 'qr') setTimeout(() => toast(`📍 Đã tự chỉnh vị trí theo QR điểm ${cp.id}${Math.hypot(dx, dz) >= 2 ? ` (GPS lệch ${Math.round(Math.hypot(dx, dz))} m)` : ''}`), 900);
+}
+function renderCalib() { $('#calibB').textContent = calib ? `📍 ${calib.cp ? 'Theo QR điểm ' + calib.cp : 'Đã chỉnh'} · lệch ${Math.round(Math.hypot(calib.dx, calib.dz))} m · bỏ` : '📍 Sửa vị trí'; }
 let kf = null, motionOn = false, accBuf = [], lastStepMove = 0;
 function onMotion(e) {
   const a = e.accelerationIncludingGravity; if (!a || a.x == null) return;
@@ -691,7 +704,8 @@ function startGPS() {
   if (watchId != null) return;
   watchId = navigator.geolocation.watchPosition(p => {
     if (DEMO && !demoC) { placeDemo(p.coords.latitude, p.coords.longitude); S.demoC = demoC; save(); initLeaflet(); }
-    const raw = toXZ(p.coords.latitude, p.coords.longitude); lastRaw = { ...raw, acc: p.coords.accuracy };
+    const raw = toXZ(p.coords.latitude, p.coords.longitude); lastRaw = { ...raw, acc: p.coords.accuracy, t: Date.now() };
+    if (pendingAnchor) { const a = pendingAnchor; pendingAnchor = null; if (Date.now() - a.t < 60000) { setCalib(a.cp.x - raw.x, a.cp.z - raw.z, a.cp, 'qr'); return; } }
     if (calib) { raw.x += calib.dx; raw.z += calib.dz; }
     showRaw(raw.x, raw.z);
     const f = gpsFilter(raw.x, raw.z, p.coords.accuracy || 30, p.timestamp || Date.now());
@@ -784,6 +798,7 @@ $('#bCatch').onclick = () => {
 // ---------- gặp dấu ấn ----------
 let encStream = null, encCp = null, lockUntil = 0;
 async function openEncounter(cp, via) {
+  if (via === 'qr') anchorAt(cp);
   if (S.caught[cp.id]) { toast(`Bạn đã có dấu ấn "${cp.name}" rồi!`); return; }
   encCp = cp; const R = RARITY[cp.rarity];
   $('#encPic').innerHTML = photo(cp);

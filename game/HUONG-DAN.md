@@ -33,6 +33,8 @@ Sheet sẽ có tab `BangXepHang` với: họ tên, đơn vị, số điện tho�
 - Vào vùng phát hiện (vòng tròn), bấm **Bắt dấu ấn** → camera bật lên. Dấu ấn **ẩn ở một điểm trong vùng** (mỗi người chơi một vị trí khác nhau).
 - Gợi ý cho biết hướng và khoảng cách; mũi tên ◀ ▶ ở mép màn hình chỉ cần xoay bên nào. Thấy dấu ấn thì **chạm vào nó** rồi trả lời câu hỏi.
 - Máy không có la bàn: vuốt ngang màn hình để nhìn quanh. Quét QR thì dấu ấn hiện ngay, không cần tìm.
+- **Quét QR = tự chỉnh GPS:** khi người chơi quét QR tại một điểm, game biết chính xác họ đang đứng đó nên tự bù độ lệch GPS cho quãng đi tiếp theo. Nên đặt QR ở các điểm trong nhà/dưới mái che (GPS yếu), và ở cổng vào để người chơi quét đầu tiên.
+- Nút **📍 Sửa vị trí**: chạm vào chỗ mình đang đứng trên bản đồ để tự chỉnh bằng tay; bấm "bỏ" để quay về GPS gốc. Chấm xám trên bản đồ là GPS gốc chưa lọc.
 - Nút la bàn (góc phải): chạm để bản đồ xoay theo hướng điện thoại, chạm lần nữa để về hướng Bắc. iPhone cần bấm **Cho phép** khi được hỏi quyền chuyển động & hướng.
 
 ## 4. Lưu ý
