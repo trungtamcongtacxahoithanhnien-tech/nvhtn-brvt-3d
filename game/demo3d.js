@@ -278,6 +278,7 @@ export function createWorld({ host, center, toXZ, cps, getState, onTapCp, onTapG
     buildMap(data);
   });
   function buildMap(data) {
+    const playR = Math.max(18, ...cps.map(c => Math.hypot(c.x, c.z) + 8));
     const P = g => g.map(([la, lo]) => { const p = toXZ(la, lo); return [p.x, p.z]; });
     const roadsO = [], roadsF = [], paths = [], parks = [], water = [], blds = [], pitches = [];
     for (const e of data) {
@@ -288,7 +289,11 @@ export function createWorld({ host, center, toXZ, cps, getState, onTapCp, onTapG
         else { roadsO.push(...stripGeo(pts, w + 1.6, 0.03)); roadsF.push(...stripGeo(pts, w, 0.06)); }
       } else if (t.building && closed) {
         const lv = parseFloat(t['building:levels']) || 0, h = parseFloat(t.height) || (lv ? lv * 3.2 : 7 + (Math.abs(pts[0][0] * 7 + pts[0][1] * 3) % 6));
-        try { const g = new THREE.ExtrudeGeometry(shapeOf(pts.slice(0, -1)), { depth: Math.min(h, 60), bevelEnabled: false }); g.rotateX(-Math.PI / 2); blds.push(g.toNonIndexed ? g : g); } catch { }
+        // nhà thấp kiểu hoạt hình; nhà nằm trong khu chơi (gần các linh vật) chỉ còn nền phẳng để không che
+        const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cz = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+        const inPlay = Math.hypot(cx, cz) < playR || pts.some(([x, z]) => Math.hypot(x, z) < playR * 0.8);
+        const dh = inPlay ? 0.4 : Math.max(1.8, Math.min(6, h * 0.35));
+        try { const g = new THREE.ExtrudeGeometry(shapeOf(pts.slice(0, -1)), { depth: dh, bevelEnabled: false }); g.rotateX(-Math.PI / 2); blds.push(g.toNonIndexed ? g : g); } catch { }
       } else if (closed && (t.natural === 'water')) { const g = new THREE.ShapeGeometry(shapeOf(pts.slice(0, -1))); g.rotateX(-Math.PI / 2); g.translate(0, 0.025, 0); water.push(g); }
       else if (t.waterway) water.push(...stripGeo(pts, t.waterway === 'river' ? 30 : 10, 0.025));
       else if (closed && (t.leisure === 'pitch' || t.leisure === 'stadium')) { const g = new THREE.ShapeGeometry(shapeOf(pts.slice(0, -1))); g.rotateX(-Math.PI / 2); g.translate(0, 0.02, 0); pitches.push(g); }
