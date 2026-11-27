@@ -4,6 +4,14 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+// Linh vật: hình do Gemini vẽ, tách nền (mascots/*.webp). Nhân vật: mô hình 3D dựng bằng Tripo (mascots/avatar_*.glb).
+export const ASSET = 'mascots/';
+const TL = new THREE.TextureLoader(), texCache = {};
+function mascotTex(icon) {
+  if (!texCache[icon]) { const t = TL.load(ASSET + icon + '.webp'); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; texCache[icon] = t; }
+  return texCache[icon];
+}
 
 const toon = (c, o = {}) => new THREE.MeshToonMaterial({ color: c, ...o });
 const SPH = new THREE.SphereGeometry(1, 24, 18);
@@ -36,145 +44,18 @@ const MASCOT = {
 export const mascotName = icon => (MASCOT[icon] || {}).nm || '';
 
 export function mascot(icon) {
-  const P = MASCOT[icon] || { c: '#bbb' };
   const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
-  let bodyH = 1;
-  if (icon === 'landmark') bodyH = 1.45;
-  if (icon === 'condao') bodyH = 0.8;
-  // thân
-  blob(P.c, 0.5, 0.52 * bodyH, 0.48, 0, 0.52 * bodyH, 0, body);
-  // chân, tay
-  const dark = new THREE.Color(P.c).multiplyScalar(0.78).getStyle();
-  blob(dark, 0.15, 0.08, 0.18, -0.2, 0.06, 0.08, body); blob(dark, 0.15, 0.08, 0.18, 0.2, 0.06, 0.08, body);
-  blob(P.c, 0.1, 0.16, 0.1, -0.47, 0.5 * bodyH, 0.05, body).rotation.z = 0.5;
-  blob(P.c, 0.1, 0.16, 0.1, 0.47, 0.5 * bodyH, 0.05, body).rotation.z = -0.5;
-  // mắt, má
-  const ey = 0.66 * bodyH;
-  for (const s of [-1, 1]) {
-    blob('#ffffff', 0.12, 0.14, 0.06, s * 0.17, ey, 0.43, body);
-    blob('#1d1d2b', 0.075, 0.09, 0.05, s * 0.17, ey - 0.01, 0.47, body);
-    blob('#ffffff', 0.025, 0.025, 0.02, s * 0.17 + 0.03, ey + 0.04, 0.51, body);
-    blob('#ff8fa3', 0.07, 0.04, 0.02, s * 0.3, ey - 0.13, 0.4, body);
-  }
-  // miệng
-  add(new THREE.TorusGeometry(0.06, 0.015, 6, 12, Math.PI), '#5a2a2a', 0, ey - 0.14, 0.47, body, 0, 0, Math.PI);
-  const top = 1.04 * bodyH;
-  const acc = new THREE.Group(); body.add(acc);
-  switch (icon) {
-    case 'nvhtn': // khăn quàng + mũ tai bèo xanh
-      add(new THREE.TorusGeometry(0.36, 0.06, 8, 24), '#e74c3c', 0, 0.38, 0, acc, Math.PI / 2);
-      blob('#e74c3c', 0.06, 0.12, 0.03, 0.12, 0.26, 0.4, acc).rotation.z = 0.3;
-      add(new THREE.CylinderGeometry(0.42, 0.45, 0.05, 24), '#2e7d5b', 0, top - 0.06, 0, acc);
-      blob('#2e7d5b', 0.3, 0.16, 0.3, 0, top - 0.04, 0, acc);
-      break;
-    case 'benthanh': { // tháp đồng hồ
-      add(new THREE.CylinderGeometry(0.2, 0.2, 0.03, 24), '#ffffff', 0, 0.42, 0.47, acc, Math.PI / 2);
-      add(new THREE.BoxGeometry(0.02, 0.13, 0.02), '#333', 0, 0.47, 0.49, acc);
-      add(new THREE.BoxGeometry(0.1, 0.02, 0.02), '#333', 0.04, 0.42, 0.49, acc);
-      add(new THREE.BoxGeometry(0.26, 0.26, 0.26), '#e0a63a', 0, top + 0.08, 0, acc);
-      add(new THREE.ConeGeometry(0.24, 0.26, 4), '#c0392b', 0, top + 0.34, 0, acc, 0, Math.PI / 4);
-      break; }
-    case 'dinh': // mái bằng rộng + lá cây
-      add(new THREE.BoxGeometry(0.9, 0.06, 0.5), '#d9d4c7', 0, top - 0.02, 0, acc);
-      add(new THREE.BoxGeometry(0.6, 0.12, 0.34), '#ece8dd', 0, top + 0.07, 0, acc);
-      blob('#4caf50', 0.08, 0.14, 0.04, 0.05, top + 0.22, 0, acc).rotation.z = -0.4;
-      break;
-    case 'nharong': // sừng, gai lưng, đuôi
-      add(new THREE.ConeGeometry(0.07, 0.25, 10), '#f7d35c', -0.18, top + 0.04, 0, acc, 0, 0, 0.3);
-      add(new THREE.ConeGeometry(0.07, 0.25, 10), '#f7d35c', 0.18, top + 0.04, 0, acc, 0, 0, -0.3);
-      for (let i = 0; i < 4; i++) add(new THREE.ConeGeometry(0.07, 0.18, 6), '#f39c4a', 0, 0.85 - i * 0.18, -0.4 + i * 0.02, acc, -0.7);
-      add(new THREE.ConeGeometry(0.14, 0.5, 10), '#5cc27a', 0, 0.2, -0.55, acc, -1.2);
-      break;
-    case 'cuchi': // nón lá + mũi hồng
-      add(new THREE.ConeGeometry(0.5, 0.3, 24), '#e8d39a', 0, top + 0.08, 0, acc);
-      blob('#ff9aa8', 0.06, 0.05, 0.05, 0, 0.55, 0.5, acc);
-      break;
-    case 'haidang': // sọc đỏ + đèn sáng
-      for (const y of [0.3, 0.62]) add(new THREE.TorusGeometry(0.49, 0.05, 8, 32), '#e74c3c', 0, y, 0, acc, Math.PI / 2);
-      add(new THREE.CylinderGeometry(0.16, 0.16, 0.2, 16), '#333', 0, top + 0.06, 0, acc);
-      blob('#fff27a', 0.13, 0.13, 0.13, 0, top + 0.12, 0, acc).material.emissive = new THREE.Color('#ffd400');
-      add(new THREE.ConeGeometry(0.2, 0.2, 16), '#e74c3c', 0, top + 0.32, 0, acc);
-      break;
-    case 'bachdinh': // mái ngói đỏ
-      add(new THREE.ConeGeometry(0.5, 0.34, 4), '#c8553d', 0, top + 0.1, 0, acc, 0, Math.PI / 4);
-      break;
-    case 'condao': // mai rùa + chân chèo
-      blob('#3e8f6b', 0.5, 0.32, 0.5, 0, 0.62, -0.08, acc);
-      for (const s of [-1, 1]) blob('#7fd0a8', 0.24, 0.05, 0.12, s * 0.5, 0.3, 0.15, acc).rotation.y = s * 0.5;
-      break;
-    case 'sonmai': // bụng đỏ son + chấm vàng
-      blob('#c0392b', 0.3, 0.3, 0.1, 0, 0.42, 0.4, acc);
-      for (let i = 0; i < 7; i++) { const a = i * 0.9; blob('#f4c542', 0.035, 0.035, 0.035, Math.cos(a) * 0.4, 0.3 + (i % 3) * 0.22, Math.sin(a) * 0.15 + 0.3, acc); }
-      add(new THREE.TorusGeometry(0.12, 0.03, 8, 16), '#f4c542', 0, top + 0.08, 0, acc);
-      break;
-    case 'ducba': // hai tháp chuông
-      for (const s of [-1, 1]) {
-        add(new THREE.BoxGeometry(0.16, 0.3, 0.16), '#c96a58', s * 0.22, top + 0.06, 0, acc);
-        add(new THREE.ConeGeometry(0.12, 0.3, 4), '#6d7b8c', s * 0.22, top + 0.36, 0, acc, 0, Math.PI / 4);
-      }
-      break;
-    case 'buudien': // phong thư + mái vòm xanh
-      add(new THREE.BoxGeometry(0.4, 0.26, 0.04), '#ffffff', 0, 0.38, 0.46, acc);
-      add(new THREE.BoxGeometry(0.26, 0.03, 0.02), '#e74c3c', -0.09, 0.42, 0.49, acc, 0, 0, -0.55);
-      add(new THREE.BoxGeometry(0.26, 0.03, 0.02), '#e74c3c', 0.09, 0.42, 0.49, acc, 0, 0, 0.55);
-      blob('#4f9d8a', 0.3, 0.16, 0.3, 0, top - 0.02, 0, acc);
-      break;
-    case 'nhahat': // vương miện vòm vàng
-      add(new THREE.TorusGeometry(0.25, 0.04, 8, 24, Math.PI), '#f4c542', 0, top - 0.02, 0, acc);
-      blob('#f4c542', 0.06, 0.06, 0.06, 0, top + 0.25, 0, acc);
-      break;
-    case 'nguyenhue': // bông hoa trên đầu
-      for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; blob('#ff6f9c', 0.12, 0.05, 0.08, Math.cos(a) * 0.15, top + 0.04, Math.sin(a) * 0.15, acc).rotation.y = -a; }
-      blob('#ffd54f', 0.08, 0.06, 0.08, 0, top + 0.07, 0, acc);
-      break;
-    case 'landmark': // đốt tre + ăng-ten
-      for (const y of [0.45, 0.85, 1.2]) add(new THREE.TorusGeometry(0.47 - Math.abs(y - 0.8) * 0.12, 0.03, 8, 32), '#4b9cc0', 0, y, 0, acc, Math.PI / 2);
-      add(new THREE.CylinderGeometry(0.02, 0.02, 0.4, 8), '#9aa', 0, top + 0.2, 0, acc);
-      blob('#ff5252', 0.04, 0.04, 0.04, 0, top + 0.42, 0, acc).material.emissive = new THREE.Color('#ff2020');
-      break;
-    case 'thuthiem': { // trụ cầu + dây văng
-      add(new THREE.CylinderGeometry(0.04, 0.05, 0.6, 8), '#b0bec5', 0, top + 0.28, 0, acc);
-      for (let i = -3; i <= 3; i++) if (i) {
-        const len = 0.18 + Math.abs(i) * 0.1, m = add(new THREE.CylinderGeometry(0.008, 0.008, len, 4), '#e57373', i * 0.06, top + 0.5 - len / 2 * 0.8, 0, acc);
-        m.rotation.z = -Math.sign(i) * 0.6;
-      }
-      break; }
-    case 'nuinho': // đỉnh núi + cây
-      add(new THREE.ConeGeometry(0.22, 0.4, 8), '#5fae5a', -0.12, top + 0.12, 0, acc);
-      add(new THREE.ConeGeometry(0.16, 0.3, 8), '#6fbf68', 0.16, top + 0.06, 0.05, acc);
-      blob('#ffffff', 0.06, 0.04, 0.06, -0.12, top + 0.3, 0, acc);
-      break;
-  }
-  // bóng dưới chân
-  const sh = new THREE.Mesh(new THREE.CircleGeometry(0.45, 24), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.18, depthWrite: false }));
+  const card = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 1.25), new THREE.MeshBasicMaterial({ map: mascotTex(icon), transparent: true, alphaTest: 0.06, side: THREE.DoubleSide }));
+  card.position.y = 0.61; body.add(card);
+  const sh = new THREE.Mesh(new THREE.CircleGeometry(0.28, 24), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.14, depthWrite: false }));
   sh.rotation.x = -Math.PI / 2; sh.position.y = 0.01; g.add(sh);
   const ph = Math.random() * 6;
-  g.userData.anim = t => { const b = Math.abs(Math.sin(t * 3 + ph)); body.position.y = b * 0.12; body.scale.set(1 + (1 - b) * 0.05, 1 - (1 - b) * 0.05, 1 + (1 - b) * 0.05); sh.scale.setScalar(1 - b * 0.2); };
+  g.userData.anim = t => { const b = Math.abs(Math.sin(t * 2.6 + ph)); body.position.y = b * 0.14; body.scale.set(1 + (1 - b) * 0.04, 1 - (1 - b) * 0.04, 1); sh.scale.setScalar(1 - b * 0.25); };
   g.userData.body = body;
   return g;
 }
 
-// Ảnh PNG của linh vật (dùng ở màn bắt qua camera, sổ tay)
-let mr = null; const mcache = {};
-export function mascotImage(icon) {
-  if (mcache[icon]) return mcache[icon];
-  try {
-    if (!mr) {
-      const cv = document.createElement('canvas'); cv.width = cv.height = 320;
-      mr = { r: new THREE.WebGLRenderer({ canvas: cv, alpha: true, antialias: true, preserveDrawingBuffer: true }), sc: new THREE.Scene(), cam: new THREE.PerspectiveCamera(30, 1, 0.1, 20) };
-      mr.r.setClearColor(0, 0); mr.r.outputColorSpace = THREE.SRGBColorSpace;
-      mr.sc.add(new THREE.HemisphereLight(0xffffff, 0x99aabb, 2.2)); const d = new THREE.DirectionalLight(0xffffff, 1.6); d.position.set(2, 4, 5); mr.sc.add(d);
-      mr.cam.position.set(0, 1.1, 4.2); mr.cam.lookAt(0, 0.62, 0);
-    }
-    const m = mascot(icon); m.rotation.y = -0.35; mr.sc.add(m);
-    const box = new THREE.Box3().setFromObject(m), h = box.max.y;
-    mr.cam.position.set(0, h * 0.62 + 0.25, 2.6 + h * 1.3); mr.cam.lookAt(0, h * 0.5, 0);
-    mr.r.render(mr.sc, mr.cam);
-    mcache[icon] = mr.r.domElement.toDataURL('image/png');
-    mr.sc.remove(m);
-  } catch (e) { mcache[icon] = ''; }
-  return mcache[icon];
-}
+export const mascotImage = icon => ASSET + icon + '.webp';
 
 // ================= NHÂN VẬT NGƯỜI CHƠI =================
 export const SHIRTS = ['#1e88e5', '#e53935', '#43a047', '#fdd835', '#8e24aa', '#fb8c00', '#00acc1', '#ec407a'];
@@ -214,12 +95,7 @@ export function avatar({ gender = 'nam', shirt = '#1e88e5' } = {}) {
   };
   return g;
 }
-export function avatarImage(opt) {   // ảnh nhỏ cho màn chọn nhân vật
-  mascotImage('nvhtn');   // khởi tạo renderer
-  const a = avatar(opt); a.rotation.y = -0.4; mr.sc.add(a);
-  mr.cam.position.set(0, 1.25, 4.6); mr.cam.lookAt(0, 0.95, 0); mr.r.render(mr.sc, mr.cam);
-  const u = mr.r.domElement.toDataURL('image/png'); mr.sc.remove(a); return u;
-}
+export const avatarImage = opt => ASSET + 'avatar_' + ((opt && opt.gender) || 'nam') + '.webp';
 
 // ================= BẢN ĐỒ HOẠT HÌNH =================
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
@@ -323,7 +199,32 @@ export function createWorld({ host, center, toXZ, cps, getState, onTapCp, onTapG
   });
   // ---- người chơi ----
   let me = null, meOpt = null;
-  function setAvatar(opt) { if (me) scene.remove(me.g); meOpt = opt; const g = new THREE.Group(); const a = avatar(opt); a.scale.setScalar(1.6); g.add(a); scene.add(g); me = { g, a, ph: 0, last: null, face: 0 }; buildCone(); }
+  function setAvatar(opt) {
+    if (me) scene.remove(me.g); meOpt = opt; const g = new THREE.Group(); const a = avatar(opt); a.scale.setScalar(1.6); g.add(a); scene.add(g);
+    me = { g, a, ph: 0, last: null, face: 0 }; buildCone();
+    // thay bằng mô hình 3D Tripo khi tải xong
+    new GLTFLoader().load(ASSET + 'avatar_' + ((opt && opt.gender) || 'nam') + '.glb', gl => {
+      const m = gl.scene, box = new THREE.Box3().setFromObject(m), h = box.max.y - box.min.y || 1, sc = 2.7 / h;
+      m.scale.setScalar(sc); m.position.y = -box.min.y * sc;
+      const cx = (box.max.x + box.min.x) / 2 * sc, cz = (box.max.z + box.min.z) / 2 * sc; m.position.x = -cx; m.position.z = -cz;
+      m.traverse(o => { if (o.isMesh) { o.castShadow = false; if (o.material) o.material.side = THREE.FrontSide; } });
+      const wrap = new THREE.Group(), inner = new THREE.Group(); inner.add(m); wrap.add(inner);
+      const sh = new THREE.Mesh(new THREE.CircleGeometry(0.55, 24), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.22, depthWrite: false })); sh.rotation.x = -Math.PI / 2; sh.position.y = 0.02; wrap.add(sh);
+      let mixer = null, walkA = null, idleA = null;
+      if (gl.animations && gl.animations.length) {
+        mixer = new THREE.AnimationMixer(m);
+        const find = re => gl.animations.find(c => re.test(c.name));
+        const wc = find(/walk|run/i) || gl.animations[0], ic = find(/idle/i);
+        walkA = mixer.clipAction(wc); walkA.play(); walkA.weight = 0;
+        if (ic) { idleA = mixer.clipAction(ic); idleA.play(); }
+      }
+      wrap.userData.walk = (ph, amt, dt) => {
+        if (mixer) { walkA.setEffectiveWeight(amt); if (idleA) idleA.setEffectiveWeight(1 - amt); mixer.update(dt || 0.016); }
+        else { inner.position.y = Math.abs(Math.sin(ph)) * 0.16 * amt; inner.rotation.z = Math.sin(ph) * 0.07 * amt; inner.rotation.x = 0.08 * amt; }
+      };
+      g.remove(a); g.add(wrap); me.a = wrap;
+    }, undefined, () => { /* chưa có file GLB: giữ nhân vật dựng sẵn */ });
+  }
   let cone;
   function buildCone() {
     const cc = document.createElement('canvas'); cc.width = cc.height = 256; const x = cc.getContext('2d'), gr = x.createRadialGradient(128, 128, 6, 128, 128, 128);
@@ -360,7 +261,7 @@ export function createWorld({ host, center, toXZ, cps, getState, onTapCp, onTapG
       const sp = d.length() / Math.max(dt, 1e-3);
       const amt = Math.min(1, sp / 1.2); me.walkAmt = (me.walkAmt || 0) + (amt - (me.walkAmt || 0)) * Math.min(1, dt * 6);
       me.ph += dt * (6 + sp * 2) * (me.walkAmt > 0.05 ? 1 : 0);
-      me.a.userData.walk(me.ph, me.walkAmt);
+      me.a.userData.walk(me.ph, me.walkAmt, dt);
       let face = me.face;
       if (sp > 0.3) face = Math.atan2(d.x, d.z); else if (st.heading != null) face = Math.atan2(Math.sin(st.heading * Math.PI / 180), -Math.cos(st.heading * Math.PI / 180));
       const df = Math.atan2(Math.sin(face - me.face), Math.cos(face - me.face)); me.face += df * Math.min(1, dt * 8); me.a.rotation.y = me.face;

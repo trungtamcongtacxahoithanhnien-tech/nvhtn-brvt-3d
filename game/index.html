@@ -169,7 +169,7 @@
     <div class="field avpick">Nhân vật của bạn
       <img id="avPrev" alt="">
       <div class="row"><button class="g on" data-g="nam">👦 Nam</button><button class="g" data-g="nu">👧 Nữ</button></div>
-      <div class="row" id="avSw"></div>
+      <div class="row" id="avSw" style="display:none"></div>
     </div>
     <button class="btn" id="goBtn">Bắt đầu hành trình ➜</button>
     <div class="note">Trò chơi sẽ xin quyền <b>vị trí</b> để biết bạn đang ở đâu trong khuôn viên và quyền <b>camera</b> khi dấu ấn xuất hiện. Nếu GPS yếu, hãy quét mã QR đặt tại mỗi điểm.</div>
@@ -224,7 +224,7 @@
 
 <script type="module">
 import { CONFIG, CHECKPOINTS, ICONS, RARITY, PHOTOS, GEO, latLonToXZ, DEMO_EXTRA } from './data.js?v=6';
-import { createWorld, mascotImage, avatarImage, SHIRTS, mascotName } from './demo3d.js?v=3';
+import { createWorld, mascotImage, avatarImage, SHIRTS, mascotName } from './demo3d.js?v=4';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildScene } from '../scene.js?v=7';
