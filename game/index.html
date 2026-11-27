@@ -350,7 +350,7 @@ function setHdgUp(on, quiet) {
   if (!quiet) toast(on ? 'Bản đồ xoay theo hướng điện thoại' : 'Bản đồ hướng Bắc lên trên');
 }
 $('#compass').onclick = async () => {
-  const ok = await startCompass();
+  startMotion(); const ok = await startCompass();
   if (hdgUp) { setHdgUp(false); return; }
   if (!DEMO && !mode3d) { toast(heading != null ? `Điện thoại đang hướng về ${HUONG8[Math.round(heading / 45) % 8]} — chuyển sang 3D để xoay bản đồ theo hướng` : 'Chuyển sang 3D để xoay bản đồ theo hướng'); return; }
   if (heading == null) { toast(ok ? 'Đang chờ la bàn… thử xoay nhẹ điện thoại' : 'Máy không có la bàn — hướng sẽ lấy theo hướng bạn di chuyển'); if (DEMO && LM) { curBearing = 0; LM.setBearing(0); } else if (T) camAim = 0; setTimeout(() => { if (heading != null && !hdgUp) setHdgUp(true); }, 1500); return; }
@@ -358,7 +358,8 @@ $('#compass').onclick = async () => {
 };
 // Android: không cần xin quyền; iPhone: xin quyền khi người chơi chạm nút
 startCompass();
-addEventListener('touchend', function once() { if (!compassOn) startCompass(); removeEventListener('touchend', once); }, { passive: true });
+setTimeout(startMotion);
+addEventListener('touchend', function once() { if (!compassOn) startCompass(); if (!motionOn) startMotion(); removeEventListener('touchend', once); }, { passive: true });
 
 // ---------- HUD ----------
 function renderHud() {
@@ -576,15 +577,45 @@ function updateMarkers(near) {
 let me = null, nearCp = null, watchId = null;
 const testMode = /(^|[#&])test\b/.test(location.hash) || new URLSearchParams(location.search).has('test');
 if (testMode) document.body.classList.add('test');
+// ---- lọc vị trí GPS (Kalman) + cảm biến bước đi: đứng yên thì chấm không chạy lung tung ----
+let kf = null, motionOn = false, accBuf = [], lastStepMove = 0;
+function onMotion(e) {
+  const a = e.accelerationIncludingGravity; if (!a || a.x == null) return;
+  const m = Math.hypot(a.x, a.y, a.z), t = Date.now(); accBuf.push([t, m]);
+  while (accBuf.length && t - accBuf[0][0] > 1500) accBuf.shift();
+  if (accBuf.length > 10) { const avg = accBuf.reduce((s, v) => s + v[1], 0) / accBuf.length, sd = Math.sqrt(accBuf.reduce((s, v) => s + (v[1] - avg) ** 2, 0) / accBuf.length); if (sd > 0.9) lastStepMove = t; }
+}
+function startMotion() {
+  if (motionOn) return; const DME = window.DeviceMotionEvent; if (!DME) return;
+  const go = () => { motionOn = true; addEventListener('devicemotion', onMotion); };
+  if (typeof DME.requestPermission === 'function') DME.requestPermission().then(r => { if (r === 'granted') go(); }).catch(() => { }); else go();
+}
+const walking = () => !motionOn || Date.now() - lastStepMove < 2500;   // không có cảm biến thì coi như đang đi
+function gpsFilter(x, z, acc, t) {
+  acc = Math.max(acc, 3);
+  if (!kf) { if (acc > 60) return null; kf = { x, z, v: acc * acc, t, best: acc }; return { x, z, acc }; }
+  const dt = Math.max(0.2, Math.min((t - kf.t) / 1000, 10)); kf.t = t;
+  kf.best = Math.min(acc, kf.best * 1.05 + 0.5);
+  if (acc > Math.max(25, kf.best * 3)) return { x: kf.x, z: kf.z, acc: Math.sqrt(kf.v) };   // bỏ điểm quá nhiễu
+  const mv = walking(), q = mv ? 2.2 : 0.25;            // tốc độ đi bộ ~2 m/s; đứng yên gần như cố định
+  kf.v += q * q * dt * dt + (mv ? 1 : 0);
+  const d = Math.hypot(x - kf.x, z - kf.z);
+  if (!mv && d < acc * 1.2) kf.v = Math.min(kf.v, 1);        // đứng yên: phớt lờ dao động trong sai số
+  const k = kf.v / (kf.v + acc * acc);
+  kf.x += (x - kf.x) * k; kf.z += (z - kf.z) * k; kf.v *= (1 - k);
+  return { x: kf.x, z: kf.z, acc: Math.min(acc, Math.sqrt(kf.v) + 2) };
+}
 function startGPS() {
   if (testMode) { setStatus('🧪 Chế độ thử — chạm bản đồ để đặt vị trí.'); return; }
   if (!('geolocation' in navigator)) { setStatus('Thiết bị không hỗ trợ GPS — hãy dùng <b>Quét QR</b> tại mỗi điểm.'); return; }
   if (watchId != null) return;
   watchId = navigator.geolocation.watchPosition(p => {
     if (DEMO && !demoC) { placeDemo(p.coords.latitude, p.coords.longitude); S.demoC = demoC; save(); initLeaflet(); }
-    const { x, z } = toXZ(p.coords.latitude, p.coords.longitude);
+    const raw = toXZ(p.coords.latitude, p.coords.longitude), f = gpsFilter(raw.x, raw.z, p.coords.accuracy || 30, p.timestamp || Date.now());
+    if (!f) return;
+    const { x, z } = f;
     if (hdgSrc !== 'compass' && p.coords.heading != null && !isNaN(p.coords.heading) && p.coords.speed > 0.6) setHeading(p.coords.heading, 'gps', true);
-    updateMe(x, z, p.coords.accuracy);
+    updateMe(x, z, f.acc);
   }, err => {
     setStatus(err.code === 1 ? 'Bạn chưa cho phép truy cập vị trí. Hãy bật quyền vị trí cho trang này, hoặc dùng <b>Quét QR</b>.' : 'Chưa lấy được vị trí GPS — thử ra chỗ thoáng, hoặc dùng <b>Quét QR</b>.');
   }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
@@ -640,7 +671,6 @@ function animStep(t) {
 function updateMe(x, z, acc) {
   if (me && hdgSrc !== 'compass' && Math.hypot(x - me.x, z - me.z) > 1.5) setHeading(xzToAz(x - me.x, z - me.z), 'move', true);
   // lọc nhiễu GPS: điểm sai số lớn chỉ kéo vị trí đi một phần
-  if (me && !testMode) { const k = Math.max(0.35, Math.min(1, 6 / Math.max(acc, 1))); x = me.x + (x - me.x) * k; z = me.z + (z - me.z) * k; }
   me = { x, z, acc };
   if (!disp) disp = { x, z };
   if (gPlayer) { gPlayer.setAttribute('display', ''); gPlayer.querySelector('#acc').setAttribute('r', Math.min(acc, 40)); }
@@ -707,7 +737,8 @@ function startSeek(cp) {
   enc.onpointerup = enc.onpointercancel = () => { if (seek) seek.drag = null; };
   const step = () => {
     if (!seek) return;
-    const p = disp || me, dx = seek.spot.x - p.x, dz = seek.spot.z - p.z, d = Math.hypot(dx, dz);
+    const cur = disp || me; if (!seek.ref || Math.hypot(cur.x - seek.ref.x, cur.z - seek.ref.z) > 2) seek.ref = { x: cur.x, z: cur.z };
+    const p = seek.ref, dx = seek.spot.x - p.x, dz = seek.spot.z - p.z, d = Math.hypot(dx, dz);
     const brg = d < 1.2 ? null : xzToAz(dx, dz);
     if (seek.virt == null && hdgSrc !== 'compass') seek.virt = heading ?? 0;
     const look = seek.virt != null ? seek.virt : heading;
