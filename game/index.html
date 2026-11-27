@@ -459,6 +459,7 @@ function drawMap() {
   [[-40, 39, 4], [-48, 34, 3.5], [-32, 44, 3.4], [-58, 38, 3], [13, 36, 3.6], [20, 31, 3.2], [7, 41, 2.8], [-96, -10, 3], [-96, 4, 2.8]].forEach(([x, y, r]) => el('circle', { cx: x, cy: y, r, fill: '#6fae5c', opacity: .85 }));
   // bán kính bắt + dấu ấn
   gCps = el('g', {});
+  el('circle', { id: 'svgRaw', r: 1.1, fill: '#6b7480', stroke: '#fff', 'stroke-width': .5, display: 'none' });
   gPlayer = el('g', { display: 'none' });
   el('circle', { r: 6, fill: '#2a7fd0', opacity: .15, id: 'acc' }, gPlayer);
   { const defs = el('defs', {}), rg = el('radialGradient', { id: 'cg', cx: 0, cy: 0, r: 14, gradientUnits: 'userSpaceOnUse' }, defs);
@@ -638,6 +639,12 @@ if (testMode) document.body.classList.add('test');
 // ---- lọc vị trí GPS (Kalman) + cảm biến bước đi: đứng yên thì chấm không chạy lung tung ----
 let calib = null, calibMode = false, lastRaw = null;
 try { const c = JSON.parse(localStorage.getItem(LS + '-calib') || 'null'); if (c && Date.now() - c.t < 3 * 3600e3) calib = c; } catch { }
+let rawMk = null;
+function showRaw(x, z) {   // chấm xám: vị trí GPS gốc (chưa lọc) để so với chấm xanh
+  if (LM) { const ll = xzToLL(x, z); if (!rawMk) rawMk = L.circleMarker(ll, { radius: 5, color: '#fff', weight: 2, fillColor: '#6b7480', fillOpacity: .9, interactive: false }).addTo(LM); else rawMk.setLatLng(ll); }
+  if (T) { if (!T.rawDot) { T.rawDot = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.15, 16), new THREE.MeshBasicMaterial({ color: 0x6b7480 })); T.avatar.parent.add(T.rawDot); } T.rawDot.position.set(x, 0.3, z); }
+  const sr = document.getElementById('svgRaw'); if (sr) { sr.setAttribute('display', ''); sr.setAttribute('cx', x); sr.setAttribute('cy', z); }
+}
 function calibAt(x, z) {   // người chơi chạm vào chỗ mình đang đứng → bù độ lệch GPS
   calibMode = false; $('#calibB').classList.remove('on');
   if (!lastRaw && !testMode) { toast('Chưa có tín hiệu GPS để chỉnh'); return; }
@@ -668,10 +675,12 @@ function gpsFilter(x, z, acc, t) {
   const dt = Math.max(0.2, Math.min((t - kf.t) / 1000, 10)); kf.t = t;
   kf.best = Math.min(acc, kf.best * 1.05 + 0.5);
   if (acc > Math.max(25, kf.best * 3)) return { x: kf.x, z: kf.z, acc: Math.sqrt(kf.v) };   // bỏ điểm quá nhiễu
-  const mv = walking(), q = mv ? 2.2 : 0.25;            // tốc độ đi bộ ~2 m/s; đứng yên gần như cố định
+  const mv = walking(), q = mv ? 2.5 : 0.7;            // tốc độ đi bộ ~2 m/s; đứng yên gần như cố định
   kf.v += q * q * dt * dt + (mv ? 1 : 0);
   const d = Math.hypot(x - kf.x, z - kf.z);
-  if (!mv && d < acc * 1.2) kf.v = Math.min(kf.v, 1);        // đứng yên: phớt lờ dao động trong sai số
+  kf.far = d > Math.max(acc, 4) ? (kf.far || 0) + 1 : 0;
+  if (kf.far >= 3) { kf.x = x; kf.z = z; kf.v = acc * acc; kf.far = 0; return { x, z, acc }; }   // lệch xa 3 lần liền → nhảy theo GPS
+  if (!mv && d < acc * 0.7) kf.v = Math.min(kf.v, 2);        // đứng yên: phớt lờ dao động trong sai số
   const k = kf.v / (kf.v + acc * acc);
   kf.x += (x - kf.x) * k; kf.z += (z - kf.z) * k; kf.v *= (1 - k);
   return { x: kf.x, z: kf.z, acc: Math.min(acc, Math.sqrt(kf.v) + 2) };
@@ -684,6 +693,7 @@ function startGPS() {
     if (DEMO && !demoC) { placeDemo(p.coords.latitude, p.coords.longitude); S.demoC = demoC; save(); initLeaflet(); }
     const raw = toXZ(p.coords.latitude, p.coords.longitude); lastRaw = { ...raw, acc: p.coords.accuracy };
     if (calib) { raw.x += calib.dx; raw.z += calib.dz; }
+    showRaw(raw.x, raw.z);
     const f = gpsFilter(raw.x, raw.z, p.coords.accuracy || 30, p.timestamp || Date.now());
     if (!f) return;
     const { x, z } = f;
@@ -760,7 +770,7 @@ function updateMe(x, z, acc) {
   nearCp = best && best.d <= reach ? best.cp : null;
   drawCps(nearCp);
   $('#bCatch').classList.toggle('hot', !!nearCp);
-  const accTxt = `GPS ±${Math.round(acc)} m`;
+  const accTxt = `GPS ±${Math.round(acc)} m` + (lastRaw ? ' · <span style="color:#6b7480">⚫ chấm xám = GPS gốc</span>' : '');
   if (!inSite) setStatus(DEMO ? `Bạn đang ở xa khu demo (${accTxt}). Hãy đến gần các vòng tròn trên bản đồ.` : `Bạn đang ở ngoài khuôn viên Nhà Văn hóa (${accTxt}). Hãy đến <b>160 Hạ Long, Vũng Tàu</b> để bắt đầu.`);
   else if (!best) setStatus('🎉 Bạn đã thu thập đủ dấu ấn! Mở <b>Sổ tay</b> để nhận quà.');
   else if (nearCp) setStatus(`✨ <b>Bạn đã vào vùng phát hiện!</b> Bấm <b>Bắt dấu ấn</b> rồi tìm dấu ấn qua camera. <span style="color:#5f6b78">(${accTxt})</span>`);
