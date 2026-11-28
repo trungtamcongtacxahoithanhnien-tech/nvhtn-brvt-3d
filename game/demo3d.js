@@ -172,7 +172,13 @@ function stripGeo(pts, w, y) {   // dải đường phẳng + nút tròn ở kh�
 }
 function shapeOf(pts) { const s = new THREE.Shape(); pts.forEach(([x, z], i) => i ? s.lineTo(x, -z) : s.moveTo(x, -z)); return s; }
 
-export function createWorld({ host, center, toXZ, cps, getState, onTapCp, onTapGround, onFrame }) {
+// stream: chế độ "Toàn Thành phố" — hàng trăm linh vật trải trên hàng chục km.
+// Chỉ dựng linh vật quanh người chơi và tải lại bản đồ OSM khi người chơi đi xa tâm cũ.
+const VIS_R = 300;    // bán kính dựng linh vật (m)
+const MAP_R = 480;    // bán kính tải bản đồ OSM (m)
+const MAP_MOVE = 260; // đi quá ngần này thì dựng lại bản đồ (m)
+
+export function createWorld({ host, center, toXZ, xzToLL, cps, stream = false, getState, onTapCp, onTapGround, onFrame }) {
   const W = () => host.clientWidth || innerWidth, H = () => host.clientHeight || innerHeight;
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(W(), H()); renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -184,6 +190,7 @@ export function createWorld({ host, center, toXZ, cps, getState, onTapCp, onTapG
   scene.add(new THREE.HemisphereLight(0xffffff, 0x88aa88, 1.9));
   const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(40, 80, 30); scene.add(sun);
   const ground = new THREE.Mesh(new THREE.CircleGeometry(900, 48), toon('#a8e29b')); ground.rotation.x = -Math.PI / 2; scene.add(ground);
+  const groundFollow = stream;   // nền cỏ bám theo người chơi vì đi xa hơn bán kính nền
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enablePan = false; controls.enableDamping = true; controls.minDistance = 10; controls.maxDistance = 80;
   controls.minPolarAngle = 0.35; controls.maxPolarAngle = 1.2; controls.rotateSpeed = 0.6;
@@ -192,13 +199,30 @@ export function createWorld({ host, center, toXZ, cps, getState, onTapCp, onTapG
   const status = document.createElement('div');
   Object.assign(status.style, { position: 'absolute', left: '50%', top: '45%', transform: 'translate(-50%,-50%)', background: 'rgba(255,255,255,.9)', padding: '8px 14px', borderRadius: '16px', fontWeight: 700, color: '#1d4f86', zIndex: 2, pointerEvents: 'none' });
   status.textContent = '🗺️ Đang dựng bản đồ…'; host.appendChild(status);
-  fetchOSM(center.lat, center.lon, 420).then(data => {
-    status.remove();
-    if (!data) { const t = document.createElement('div'); t.style.cssText = status.style.cssText; t.style.top = '30%'; t.textContent = 'Không tải được dữ liệu đường phố — chỉ hiện nền'; host.appendChild(t); setTimeout(() => t.remove(), 4000); return; }
-    buildMap(data);
-  });
-  function buildMap(data) {
-    const playR = Math.max(18, ...cps.map(c => Math.hypot(c.x, c.z) + 8));
+  let mapRoot = null, mapAt = null, mapBusy = false, mapWait = 0;
+  function loadMap(lat, lon, cx, cz) {
+    if (mapBusy) return; mapBusy = true;
+    const first = !mapRoot;
+    if (first) host.appendChild(status);
+    fetchOSM(lat, lon, stream ? MAP_R : 420).then(data => {
+      mapBusy = false; status.remove();
+      if (!data) { mapWait = performance.now() + 30000; if (first) { const t = document.createElement('div'); t.style.cssText = status.style.cssText; t.style.top = '30%'; t.textContent = 'Không tải được dữ liệu đường phố — chỉ hiện nền'; host.appendChild(t); setTimeout(() => t.remove(), 4000); } return; }
+      mapAt = { x: cx, z: cz };
+      if (mapRoot) { scene.remove(mapRoot); mapRoot.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+      mapRoot = new THREE.Group(); scene.add(mapRoot);
+      buildMap(data, cx, cz);
+    }).catch(() => { mapBusy = false; mapWait = performance.now() + 30000; status.remove(); });
+  }
+  loadMap(center.lat, center.lon, 0, 0);
+  // đi xa tâm bản đồ cũ thì dựng lại quanh chỗ đang đứng
+  function ensureMap(x, z) {
+    if (!stream || !xzToLL || mapBusy || performance.now() < mapWait) return;
+    if (mapAt && Math.hypot(x - mapAt.x, z - mapAt.z) < MAP_MOVE) return;
+    const ll = xzToLL(x, z); loadMap(ll.lat, ll.lon, x, z);
+  }
+  function buildMap(data, mx = 0, mz = 0) {
+    const gan = stream ? cps.filter(c => Math.hypot(c.x - mx, c.z - mz) < VIS_R) : cps;
+    const playR = gan.length ? Math.max(18, ...gan.map(c => Math.hypot(c.x - mx, c.z - mz) + 8)) : 18;
     const P = g => g.map(([la, lo]) => { const p = toXZ(la, lo); return [p.x, p.z]; });
     const roadsO = [], roadsF = [], paths = [], parks = [], water = [], blds = [], pitches = [];
     for (const e of data) {
@@ -211,7 +235,7 @@ export function createWorld({ host, center, toXZ, cps, getState, onTapCp, onTapG
         const lv = parseFloat(t['building:levels']) || 0, h = parseFloat(t.height) || (lv ? lv * 3.2 : 7 + (Math.abs(pts[0][0] * 7 + pts[0][1] * 3) % 6));
         // nhà thấp kiểu hoạt hình; nhà nằm trong khu chơi (gần các linh vật) chỉ còn nền phẳng để không che
         const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cz = pts.reduce((s, p) => s + p[1], 0) / pts.length;
-        const inPlay = Math.hypot(cx, cz) < playR || pts.some(([x, z]) => Math.hypot(x, z) < playR * 0.8);
+        const inPlay = Math.hypot(cx - mx, cz - mz) < playR || pts.some(([x, z]) => Math.hypot(x - mx, z - mz) < playR * 0.8);
         const dh = inPlay ? 0.4 : Math.max(1.8, Math.min(6, h * 0.35));
         try { const g = new THREE.ExtrudeGeometry(shapeOf(pts.slice(0, -1)), { depth: dh, bevelEnabled: false }); g.rotateX(-Math.PI / 2); blds.push(g.toNonIndexed ? g : g); } catch { }
       } else if (closed && (t.natural === 'water')) { const g = new THREE.ShapeGeometry(shapeOf(pts.slice(0, -1))); g.rotateX(-Math.PI / 2); g.translate(0, 0.025, 0); water.push(g); }
@@ -219,7 +243,7 @@ export function createWorld({ host, center, toXZ, cps, getState, onTapCp, onTapG
       else if (closed && (t.leisure === 'pitch' || t.leisure === 'stadium')) { const g = new THREE.ShapeGeometry(shapeOf(pts.slice(0, -1))); g.rotateX(-Math.PI / 2); g.translate(0, 0.02, 0); pitches.push(g); }
       else if (closed) { const g = new THREE.ShapeGeometry(shapeOf(pts.slice(0, -1))); g.rotateX(-Math.PI / 2); g.translate(0, 0.015, 0); parks.push(g); }
     }
-    const put = (arr, mat) => { if (!arr.length) return; const clean = arr.map(g => { const n = g.index ? g.toNonIndexed() : g; for (const k of Object.keys(n.attributes)) if (k !== 'position' && k !== 'normal') n.deleteAttribute(k); if (!n.attributes.normal) n.computeVertexNormals(); return n; }); const m = new THREE.Mesh(mergeGeometries(clean), mat); scene.add(m); return m; };
+    const put = (arr, mat) => { if (!arr.length) return; const clean = arr.map(g => { const n = g.index ? g.toNonIndexed() : g; for (const k of Object.keys(n.attributes)) if (k !== 'position' && k !== 'normal') n.deleteAttribute(k); if (!n.attributes.normal) n.computeVertexNormals(); return n; }); const m = new THREE.Mesh(mergeGeometries(clean), mat); (mapRoot || scene).add(m); return m; };
     put(parks, toon('#79cf6e'));
     put(pitches, toon('#5fbf73'));
     put(water, toon('#6ec9f2'));
@@ -227,12 +251,12 @@ export function createWorld({ host, center, toXZ, cps, getState, onTapCp, onTapG
     put(roadsF, toon('#fffbe3'));
     put(paths, toon('#f3e7c4'));
     const b = put(blds, toon('#e6defa', { transparent: true, opacity: 0.92 }));
-    if (b) { const edges = new THREE.LineSegments(new THREE.EdgesGeometry(b.geometry, 30), new THREE.LineBasicMaterial({ color: '#b7a9de' })); scene.add(edges); }
+    if (b) { const edges = new THREE.LineSegments(new THREE.EdgesGeometry(b.geometry, 30), new THREE.LineBasicMaterial({ color: '#b7a9de' })); (mapRoot || scene).add(edges); }
     // vài cây xanh trang trí ở công viên
   }
 
   // ---- linh vật tại các điểm ----
-  const items = cps.map(cp => {
+  function makeItem(cp) {
     const g = new THREE.Group(); g.position.set(cp.x, 0, cp.z); scene.add(g);
     const m = mascot(cp.icon); m.scale.setScalar(2.2); g.add(m);
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.975, 1, 64), new THREE.MeshBasicMaterial({ color: cp.color || '#fff', transparent: true, opacity: 0.5, depthWrite: false }));
@@ -240,7 +264,28 @@ export function createWorld({ host, center, toXZ, cps, getState, onTapCp, onTapG
     const pick = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 3.2, 8), new THREE.MeshBasicMaterial({ visible: false })); pick.position.y = 1.6; pick.userData.cp = cp; g.add(pick);
     const badge = new THREE.Mesh(new THREE.CircleGeometry(0.35, 20), new THREE.MeshBasicMaterial({ color: '#2ecc71', depthTest: false })); badge.position.y = 3.3; badge.visible = false; badge.renderOrder = 5; g.add(badge);
     return { cp, g, m, ring, pick, badge };
-  });
+  }
+  function dropItem(it) {
+    scene.remove(it.g);
+    it.g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material && o.material.map === undefined) o.material.dispose(); });
+  }
+  // chế độ thường: dựng sẵn tất cả. Chế độ thành phố: chỉ dựng những con quanh người chơi.
+  const pool = new Map();
+  if (!stream) for (const cp of cps) pool.set(cp.id, makeItem(cp));
+  let itemsAt = null;
+  function ensureItems(x, z) {
+    if (!stream) return;
+    if (itemsAt && Math.hypot(x - itemsAt.x, z - itemsAt.z) < 40) return;
+    itemsAt = { x, z };
+    const can = new Set();
+    for (const cp of cps) {
+      if (Math.hypot(cp.x - x, cp.z - z) > VIS_R) continue;
+      can.add(cp.id);
+      if (!pool.has(cp.id)) pool.set(cp.id, makeItem(cp));
+    }
+    for (const [id, it] of pool) if (!can.has(id)) { dropItem(it); pool.delete(id); }
+  }
+  const items = { [Symbol.iterator]: () => pool.values(), get list() { return [...pool.values()]; } };
   // ---- người chơi ----
   let me = null, meOpt = null;
   function setAvatar(opt) {
@@ -292,7 +337,7 @@ export function createWorld({ host, center, toXZ, cps, getState, onTapCp, onTapG
   renderer.domElement.addEventListener('pointerup', e => {
     if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 8) return;
     const r = renderer.domElement.getBoundingClientRect(); ndc.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1);
-    ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(items.map(i => i.pick))[0];
+    ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(items.list.map(i => i.pick))[0];
     if (hit) { onTapCp(hit.object.userData.cp); return; }
     const gp = new THREE.Vector3(); if (onTapGround && ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), gp)) onTapGround(gp.x, gp.z);
   });
@@ -317,6 +362,8 @@ export function createWorld({ host, center, toXZ, cps, getState, onTapCp, onTapG
       const df = Math.atan2(Math.sin(face - me.face), Math.cos(face - me.face)); me.face += df * Math.min(1, dt * 8); me.a.rotation.y = me.face;
       if (cone) { cone.visible = st.heading != null; if (st.heading != null) cone.rotation.y = -st.heading * Math.PI / 180; }
       if (me.zone) { me.zone.scale.setScalar(st.radius || 5); }
+      if (groundFollow) ground.position.set(p.x, 0, p.z);
+      ensureItems(p.x, p.z); ensureMap(p.x, p.z);
     }
     for (const it of items) {
       const got = st.caught && st.caught[it.cp.id];
