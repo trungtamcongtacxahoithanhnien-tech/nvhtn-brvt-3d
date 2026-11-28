@@ -143,14 +143,14 @@ export const avatarImage = opt => ASSET + 'avatar_' + ((opt && opt.gender) || 'n
 
 // ================= BẢN ĐỒ HOẠT HÌNH =================
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
-async function fetchOSM(lat, lon, R) {
+async function fetchOSM(lat, lon, R, ms = 20000) {
   const ck = `osm-cache-${lat.toFixed(4)},${lon.toFixed(4)},${R}`;
   try { const c = localStorage.getItem(ck); if (c) return JSON.parse(c); } catch { }
   const a = `(around:${R},${lat},${lon})`;
   const q = `[out:json][timeout:25];(way["highway"]${a};way["building"]${a};way["leisure"~"park|garden|pitch|playground|stadium"]${a};way["landuse"~"grass|recreation_ground|village_green|forest"]${a};way["natural"~"water|wood|scrub"]${a};way["waterway"~"river|canal"]${a};);out geom;`;
   for (const u of OVERPASS) {
     try {
-      const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 20000);
+      const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), ms);
       const r = await fetch(u, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctl.signal });
       clearTimeout(tm); if (!r.ok) continue;
       const j = await r.json(), slim = j.elements.filter(e => e.geometry).map(e => ({ t: e.tags || {}, g: e.geometry.map(p => [+p.lat.toFixed(7), +p.lon.toFixed(7)]) }));
@@ -175,8 +175,9 @@ function shapeOf(pts) { const s = new THREE.Shape(); pts.forEach(([x, z], i) => 
 // stream: chế độ "Toàn Thành phố" — hàng trăm linh vật trải trên hàng chục km.
 // Chỉ dựng linh vật quanh người chơi và tải lại bản đồ OSM khi người chơi đi xa tâm cũ.
 const VIS_R = 300;    // bán kính dựng linh vật (m)
-const MAP_R = 480;    // bán kính tải bản đồ OSM (m)
-const MAP_MOVE = 260; // đi quá ngần này thì dựng lại bản đồ (m)
+const MAP_R = 330;    // bán kính tải bản đồ OSM (m) — nhỏ cho nhẹ vì nội thành rất dày nhà
+const MAP_MOVE = 220; // đi quá ngần này thì dựng lại bản đồ (m)
+const MAP_WAIT = 12000; // chờ mỗi máy chủ Overpass tối đa ngần này (ms)
 
 export function createWorld({ host, center, toXZ, xzToLL, cps, stream = false, getState, onTapCp, onTapGround, onFrame }) {
   const W = () => host.clientWidth || innerWidth, H = () => host.clientHeight || innerHeight;
@@ -204,16 +205,17 @@ export function createWorld({ host, center, toXZ, xzToLL, cps, stream = false, g
     if (mapBusy) return; mapBusy = true;
     const first = !mapRoot;
     if (first) host.appendChild(status);
-    fetchOSM(lat, lon, stream ? MAP_R : 420).then(data => {
-      mapBusy = false; status.remove();
+    const canh = setTimeout(() => status.remove(), 12000);   // quá lâu thì cứ bỏ chữ đi, chơi vẫn được
+    fetchOSM(lat, lon, stream ? MAP_R : 420, stream ? MAP_WAIT : 20000).then(data => {
+      mapBusy = false; clearTimeout(canh); status.remove();
       if (!data) { mapWait = performance.now() + 30000; if (first) { const t = document.createElement('div'); t.style.cssText = status.style.cssText; t.style.top = '30%'; t.textContent = 'Không tải được dữ liệu đường phố — chỉ hiện nền'; host.appendChild(t); setTimeout(() => t.remove(), 4000); } return; }
       mapAt = { x: cx, z: cz };
       if (mapRoot) { scene.remove(mapRoot); mapRoot.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
       mapRoot = new THREE.Group(); scene.add(mapRoot);
       buildMap(data, cx, cz);
-    }).catch(() => { mapBusy = false; mapWait = performance.now() + 30000; status.remove(); });
+    }).catch(() => { mapBusy = false; clearTimeout(canh); mapWait = performance.now() + 30000; status.remove(); });
   }
-  loadMap(center.lat, center.lon, 0, 0);
+  if (!stream) loadMap(center.lat, center.lon, 0, 0);   // chế độ thành phố: chờ GPS rồi tải quanh người chơi
   // đi xa tâm bản đồ cũ thì dựng lại quanh chỗ đang đứng
   function ensureMap(x, z) {
     if (!stream || !xzToLL || mapBusy || performance.now() < mapWait) return;
