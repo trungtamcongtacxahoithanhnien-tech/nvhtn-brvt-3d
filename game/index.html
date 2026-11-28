@@ -225,7 +225,8 @@
 
 <script type="module">
 import { CONFIG, CHECKPOINTS, ICONS, RARITY, PHOTOS, GEO, latLonToXZ, DEMO_EXTRA } from './data.js?v=6';
-import { createWorld, mascotImage, avatarImage, SHIRTS, mascotName } from './demo3d.js?v=6';
+import { createWorld, mascotImage, avatarImage, SHIRTS, mascotName } from './demo3d.js?v=7';
+import { buildCityCheckpoints, CITY_ORIGIN } from './city.js?v=1';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildScene } from '../scene.js?v=7';
@@ -233,10 +234,25 @@ import { buildScene } from '../scene.js?v=7';
 const $ = s => document.querySelector(s);
 // ---------- CHẾ ĐỘ DEMO: ?demo=lat,lon (hoặc ?demo=here) &r=bán kính &s=khoảng cách ----------
 const QP = new URLSearchParams(location.search);
-const DEMO = QP.has('demo') ? (() => { const v = QP.get('demo') || 'here'; const [la, lo] = v.split(',').map(Number);
+// ?demo=city → CHẾ ĐỘ TOÀN THÀNH PHỐ: hàng trăm linh vật rải khắp TP.HCM (xem city.js)
+const DEMO = (QP.has('demo') || QP.has('city')) ? (() => { const v = QP.get('demo') || (QP.has('city') ? 'city' : 'here');
+  if (v === 'city') return { city: true, here: false, lat: CITY_ORIGIN.lat, lon: CITY_ORIGIN.lon, r: +(QP.get('r') || 25), s: 0, rot: 0, d: +(QP.get('d') || 1) };
+  const [la, lo] = v.split(',').map(Number);
   return { here: !(isFinite(la) && isFinite(lo)), lat: la, lon: lo, r: +(QP.get('r') || 5), s: +(QP.get('s') || 10), rot: +(QP.get('rot') || 0) }; })() : null;
-const LS = DEMO ? 'nvhtn-hanhtrinh-demo' : 'nvhtn-hanhtrinh-v1';
+const CITY = !!(DEMO && DEMO.city);
+const LS = CITY ? 'nvhtn-hanhtrinh-city' : DEMO ? 'nvhtn-hanhtrinh-demo' : 'nvhtn-hanhtrinh-v1';
 if (DEMO) { CHECKPOINTS.push(...DEMO_EXTRA); document.documentElement.classList.add('isdemo'); }
+if (CITY) {
+  const base = CHECKPOINTS.slice();
+  CHECKPOINTS.length = 0;
+  CHECKPOINTS.push(...buildCityCheckpoints(base, DEMO.d));
+  CONFIG.REWARD_MIN = Math.min(20, CHECKPOINTS.length);
+  document.documentElement.classList.add('iscity');
+}
+// số loại linh vật đã sưu tầm (chế độ thành phố tính theo loại, không theo từng dấu ấn)
+const LOAI = [...new Set(CHECKPOINTS.map(c => c.icon))];
+const loaiCaught = () => new Set(CHECKPOINTS.filter(c => S?.caught?.[c.id]).map(c => c.icon)).size;
+const daCoLoai = icon => CHECKPOINTS.some(c => c.icon === icon && S?.caught?.[c.id]);
 CHECKPOINTS.forEach(c => c.color = RARITY[c.rarity].color);
 if (DEMO) { CONFIG.CATCH_RADIUS = DEMO.r; CONFIG.SHEET_API = ''; document.title = 'DEMO – ' + document.title; }
 const D_MLON = lat => 111320 * Math.cos(lat * Math.PI / 180);
@@ -249,6 +265,8 @@ const azToXZ = a => [Math.cos((a - FR.xAz) * RAD), Math.cos((a - FR.zAz) * RAD)]
 const xzToAz = (vx, vz) => norm(Math.atan2(vx * Math.sin(FR.xAz * RAD) + vz * Math.sin(FR.zAz * RAD), vx * Math.cos(FR.xAz * RAD) + vz * Math.cos(FR.zAz * RAD)) / RAD);
 function placeDemo(lat, lon) {
   demoC = { lat, lon };
+  // chế độ thành phố: mỗi dấu ấn đã có toạ độ thật, chỉ cần quy về mét so với tâm
+  if (CITY) { CHECKPOINTS.forEach(cp => { const p = toXZ(cp.lat, cp.lon); cp.x = p.x; cp.z = p.z; }); return; }
   // lưới vuông đủ chỗ cho mọi điểm, xếp từ gần tâm ra ngoài; [Đông, Bắc]
   const n = CHECKPOINTS.length, cols = Math.ceil(Math.sqrt(n)), off = (cols - 1) / 2, grid = [];
   for (let a = 0; a < cols; a++) for (let b = 0; b < cols; b++) grid.push([a - off, b - off]);
@@ -283,7 +301,9 @@ if (DEMO) {
   document.querySelectorAll('.avpick .g').forEach(b => b.onclick = () => { avSel.gender = b.dataset.g; document.querySelectorAll('.avpick .g').forEach(x => x.classList.toggle('on', x === b)); avPrev(); });
   const avPrev = () => { try { $('#avPrev').src = avatarImage(avSel); } catch { } };
   setTimeout(avPrev, 50);
-  document.querySelector('#start p').innerHTML = `Đi quanh khu vực để tìm và thu thập <b>${CHECKPOINTS.length} linh vật</b> — mỗi linh vật là một dấu ấn của TP.HCM mới. Chạm vào linh vật khi đến gần, tìm nó qua camera rồi trả lời câu hỏi để thu thập.`;
+  document.querySelector('#start p').innerHTML = CITY
+    ? `<b>${CHECKPOINTS.length} linh vật</b> đang rải khắp Thành phố Hồ Chí Minh, đông nhất ở các điểm trong hành trình KOL 2026. Đi tới gần một linh vật, chạm vào nó, tìm qua camera rồi trả lời câu hỏi. Mục tiêu: sưu tầm đủ <b>${LOAI.length} loại linh vật</b>.`
+    : `Đi quanh khu vực để tìm và thu thập <b>${CHECKPOINTS.length} linh vật</b> — mỗi linh vật là một dấu ấn của TP.HCM mới. Chạm vào linh vật khi đến gần, tìm nó qua camera rồi trả lời câu hỏi để thu thập.`;
 }
 function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); }
 $('#goBtn').onclick = () => {
@@ -297,10 +317,17 @@ function enterPlay() {
   show('play'); renderHud();
   if (DEMO) {
     document.querySelector('.mapwrap').classList.add('demo');
-    const c = (S.demoMine && S.demoC) || (!DEMO.here ? { lat: DEMO.lat, lon: DEMO.lon } : S.demoC);
+    const c = CITY ? { lat: DEMO.lat, lon: DEMO.lon } : (S.demoMine && S.demoC) || (!DEMO.here ? { lat: DEMO.lat, lon: DEMO.lon } : S.demoC);
     if (c) { placeDemo(c.lat, c.lon); S.demoC = c; save(); initLeaflet(); }
-    $('#demoBar').innerHTML = `🧪 <b>Bản demo</b> · ${CHECKPOINTS.length} điểm cách nhau ${DEMO.s} m · bắt trong ${DEMO.r} m · không ghi bảng xếp hạng` + (c ? '' : ' · đang chờ GPS để đặt điểm quanh bạn…') + ` · <a href="#" id="demoHere">Đặt điểm quanh tôi</a> · <a href="#" id="demoReset">Làm lại</a>`;
-    $('#demoHere').onclick = e => { e.preventDefault(); if (!me) { toast('Chưa có vị trí của bạn'); return; } const ll = xzToLL(me.x, me.z); S.demoC = { lat: ll[0], lon: ll[1] }; S.demoMine = true; S.caught = {}; S.score = 0; save(); try { localStorage.removeItem(LS + '-calib'); } catch { } location.reload(); };
+    $('#demoBar').innerHTML = CITY
+      ? `🌆 <b>Toàn Thành phố</b> · ${CHECKPOINTS.length} linh vật khắp TP.HCM · bắt trong ${DEMO.r} m · không ghi bảng xếp hạng · <a href="#" id="demoHere">Linh vật gần tôi</a> · <a href="#" id="demoReset">Làm lại</a>`
+      : `🧪 <b>Bản demo</b> · ${CHECKPOINTS.length} điểm cách nhau ${DEMO.s} m · bắt trong ${DEMO.r} m · không ghi bảng xếp hạng` + (c ? '' : ' · đang chờ GPS để đặt điểm quanh bạn…') + ` · <a href="#" id="demoHere">Đặt điểm quanh tôi</a> · <a href="#" id="demoReset">Làm lại</a>`;
+    $('#demoHere').onclick = e => {
+      e.preventDefault();
+      if (!me) { toast('Chưa có vị trí của bạn'); return; }
+      if (CITY) { lmFollow = true; if (LM) LM.setView(xzToLL(me.x, me.z), 18); if (nearList(me.x, me.z, 1)[0]) { const b = nearList(me.x, me.z, 1)[0]; toast(`${mascotName(b.cp.icon)} cách bạn ~${Math.round(b.d)} m — ${b.cp.spot}`, 3500); } return; }
+      const ll = xzToLL(me.x, me.z); S.demoC = { lat: ll[0], lon: ll[1] }; S.demoMine = true; S.caught = {}; S.score = 0; save(); try { localStorage.removeItem(LS + '-calib'); } catch { } location.reload();
+    };
     $('#demoReset').onclick = e => { e.preventDefault(); try { localStorage.removeItem(LS); } catch { } location.reload(); };
     startGPS(); handleHash(); return;
   }
@@ -357,6 +384,7 @@ function initWorld() {
   if (W3) return;
   try {
     W3 = createWorld({ host: $('#pgo'), center: demoC, toXZ: (la, lo) => toXZ(la, lo), cps: CHECKPOINTS,
+      stream: CITY, xzToLL: (x, z) => ({ lat: demoC.lat - z / 110574, lon: demoC.lon + x / D_MLON(demoC.lat) }),
       getState: () => ({ pos: disp, heading, hdgUp, caught: S.caught, radius: CONFIG.CATCH_RADIUS }),
       onFrame: () => { if (pgoOn) renderCompass(); },
       onTapGround: (x, z) => { if (testMode) updateMe(x, z, 3); },
@@ -379,7 +407,7 @@ $('#pgoB').onclick = () => {
 };
 function initLeaflet() {
   if (LM || !window.L) return;
-  LM = L.map('lmap', { zoomControl: false, attributionControl: true, maxZoom: 21, minZoom: 15, rotate: true, rotateControl: false, touchRotate: true, bearing: 0 }).setView([demoC.lat, demoC.lon], 20);
+  LM = L.map('lmap', { zoomControl: false, attributionControl: true, maxZoom: 21, minZoom: CITY ? 7 : 15, rotate: true, rotateControl: false, touchRotate: true, bearing: 0 }).setView([demoC.lat, demoC.lon], CITY ? 17 : 20);
   const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 19, maxZoom: 22, attribution: 'Ảnh vệ tinh © Esri, Maxar' });
   const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 22, attribution: '© OpenStreetMap' });
   const gg = new GoogleLayer('k', L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 19, maxZoom: 22 }));
@@ -388,28 +416,66 @@ function initLeaflet() {
   L.control.layers({ 'Google vệ tinh': gg, 'Google bản đồ': ggm, 'Esri vệ tinh': sat, 'OpenStreetMap': osm }, null, { position: 'bottomleft' }).addTo(LM);
   LM.on('dragstart', () => { lmFollow = false; $('#zoomB').textContent = '◎ Gần tôi'; });
   LM.on('click', e => { if (testMode) { const { x, z } = toXZ(e.latlng.lat, e.latlng.lng); updateMe(x, z, 3); } });
-  CHECKPOINTS.forEach(cp => {
-    const col = RARITY[cp.rarity].color;
-    const ring = L.circle([cp.lat, cp.lon], { radius: CONFIG.CATCH_RADIUS, color: col, weight: 2, dashArray: '4 4', fillColor: col, fillOpacity: 0.08, interactive: false }).addTo(LM);
-    const mk = L.marker([cp.lat, cp.lon], { icon: L.divIcon({ className: '', iconSize: [34, 34], iconAnchor: [17, 17], html: '' }) }).addTo(LM);
-    mk.on('click', () => { toast(S.caught[cp.id] ? `Đã thu thập: ${cp.name}` : `Dấu ấn ẩn tại: ${cp.spot}`); });
-    lmMarks[cp.id] = { ring, mk, st: '' };
-  });
+  syncLeafletMarkers();
+  LM.on('moveend zoomend', syncLeafletMarkers);
   lmAcc = L.circle([demoC.lat, demoC.lon], { radius: 5, color: '#2a7fd0', weight: 1, fillOpacity: 0.15 });
   lmMe = L.marker([demoC.lat, demoC.lon], { interactive: false, zIndexOffset: 1000, icon: L.divIcon({ className: '', iconSize: [0, 0], html: `<div class="meico" id="lmMeIco">${CONE_SVG}<div class="dot"></div></div>` }) });
   LM.on('rotate', renderCompass);
   setTimeout(initWorld, 0);
   updateLeafletMarkers(nearCp);
-  setTimeout(() => LM.invalidateSize(), 100);
+  setTimeout(() => { LM.invalidateSize(); syncLeafletMarkers(); }, 100);
+}
+// Chế độ thành phố có hàng trăm điểm: chỉ vẽ những điểm nằm trong khung nhìn (tối đa MAXMK điểm)
+const MAXMK = 260;
+function syncLeafletMarkers() {
+  if (!LM) return;
+  let list = CHECKPOINTS;
+  if (CITY) {
+    const b = LM.getBounds().pad(0.2);
+    list = CHECKPOINTS.filter(cp => b.contains([cp.lat, cp.lon]));
+    if (list.length > MAXMK) {
+      const c = LM.getCenter();
+      list = list.map(cp => [cp, (cp.lat - c.lat) ** 2 + (cp.lon - c.lng) ** 2]).sort((p, q) => p[1] - q[1]).slice(0, MAXMK).map(p => p[0]);
+    }
+  }
+  const giu = new Set(list.map(c => c.id));
+  for (const id of Object.keys(lmMarks)) {
+    if (giu.has(+id)) continue;
+    const m = lmMarks[id]; LM.removeLayer(m.ring); LM.removeLayer(m.mk); delete lmMarks[id];
+  }
+  for (const cp of list) {
+    if (lmMarks[cp.id]) continue;
+    const col = RARITY[cp.rarity].color;
+    const ring = L.circle([cp.lat, cp.lon], { radius: CONFIG.CATCH_RADIUS, color: col, weight: 2, dashArray: '4 4', fillColor: col, fillOpacity: 0.08, interactive: false }).addTo(LM);
+    const mk = L.marker([cp.lat, cp.lon], { icon: L.divIcon({ className: '', iconSize: [34, 34], iconAnchor: [17, 17], html: '' }) }).addTo(LM);
+    mk.on('click', () => { toast(S.caught[cp.id] ? `Đã thu thập: ${cp.name}` : `${mascotName(cp.icon)} (${cp.name}) ẩn tại: ${cp.spot}`, 3500); });
+    lmMarks[cp.id] = { cp, ring, mk, st: '' };
+  }
+  updateLeafletMarkers(nearCp);
 }
 function updateLeafletMarkers(near) {
   if (!LM) return;
-  CHECKPOINTS.forEach(cp => {
-    const m = lmMarks[cp.id], got = !!S.caught[cp.id], isNear = !!near && near.id === cp.id, st = `${got}|${isNear}`, col = RARITY[cp.rarity].color;
-    if (m.st === st) return; m.st = st;
-    m.mk.setIcon(L.divIcon({ className: '', iconSize: [34, 34], iconAnchor: [17, 17], html: `<div class="cpico" style="background:${got ? '#2f9e6e' : (isNear ? col : '#1d2733')};border-color:${col}">${got ? '✓' : '?'}</div><span class="cplbl">${got ? cp.name : 'Điểm ' + cp.id}</span>` }));
+  const nhan = !CITY || LM.getZoom() >= 17;     // nhiều điểm quá thì giấu tên cho đỡ rối
+  for (const id of Object.keys(lmMarks)) {
+    const m = lmMarks[id], cp = m.cp; if (!cp) continue;
+    const got = !!S.caught[cp.id], isNear = !!near && near.id === cp.id, st = `${got}|${isNear}|${nhan}`, col = RARITY[cp.rarity].color;
+    if (m.st === st) continue; m.st = st;
+    const ten = got ? cp.name : (CITY ? mascotName(cp.icon) : 'Điểm ' + cp.id);
+    m.mk.setIcon(L.divIcon({ className: '', iconSize: [34, 34], iconAnchor: [17, 17], html: `<div class="cpico" style="background:${got ? '#2f9e6e' : (isNear ? col : '#1d2733')};border-color:${col}">${got ? '✓' : '?'}</div>${nhan ? `<span class="cplbl">${ten}</span>` : ''}` }));
     m.ring.setStyle({ fillOpacity: isNear ? 0.3 : (got ? 0.02 : 0.08), opacity: got ? 0.4 : 1 });
-  });
+  }
+}
+// n dấu ấn chưa thu thập gần vị trí (x, z) nhất
+function nearList(x, z, n = 1) {
+  const out = [];
+  for (const cp of CHECKPOINTS) {
+    if (S.caught[cp.id]) continue;
+    const d = Math.hypot(cp.x - x, cp.z - z);
+    if (out.length < n || d < out[out.length - 1].d) {
+      out.push({ cp, d }); out.sort((a, b) => a.d - b.d); if (out.length > n) out.pop();
+    }
+  }
+  return out;
 }
 
 // ---------- LA BÀN & HƯỚNG ĐIỆN THOẠI ----------
@@ -475,7 +541,7 @@ addEventListener('touchend', function once() { if (!compassOn) startCompass(); i
 // ---------- HUD ----------
 function renderHud() {
   $('#hName').textContent = S.name;
-  $('#hSub').textContent = `${caughtCount()}/${CHECKPOINTS.length} dấu ấn` + (S.unit ? ` · ${S.unit}` : '');
+  $('#hSub').textContent = (CITY ? `${caughtCount()} linh vật · ${loaiCaught()}/${LOAI.length} loại` : `${caughtCount()}/${CHECKPOINTS.length} dấu ấn`) + (S.unit ? ` · ${S.unit}` : '');
   $('#hScore').textContent = `${S.score} điểm`;
 }
 
@@ -820,17 +886,16 @@ function updateMe(x, z, acc) {
   if (T) T.acc.scale.setScalar(Math.max(2, Math.min(acc, 40)));
   if (LM) { if (!LM.hasLayer(lmMe)) { lmAcc.addTo(LM); lmMe.addTo(LM); } lmAcc.setRadius(Math.min(acc, 60)); }
   startAnim();
-  if (!autoZoomed && map.clientWidth < map.clientHeight && x > -110 && x < 40 && z > -45 && z < 60) { autoZoomed = true; viewMode = 'me'; fitView(); }
-  const inSite = DEMO ? Math.hypot(x, z) < 80 : (x > -110 && x < 40 && z > -45 && z < 60);
+  if (!autoZoomed && !DEMO && map.clientWidth < map.clientHeight && x > -110 && x < 40 && z > -45 && z < 60) { autoZoomed = true; viewMode = 'me'; fitView(); }
   // dấu ấn gần nhất chưa thu thập
-  let best = null;
-  CHECKPOINTS.forEach(cp => { if (S.caught[cp.id]) return; const d = Math.hypot(cp.x - x, cp.z - z); if (!best || d < best.d) best = { cp, d }; });
+  const best = nearList(x, z, 1)[0] || null;
+  const inSite = CITY ? (!!best && best.d < 1500) : DEMO ? Math.hypot(x, z) < 80 : (x > -110 && x < 40 && z > -45 && z < 60);
   const reach = CONFIG.CATCH_RADIUS + Math.min(acc, 20) * 0.5;
   nearCp = best && best.d <= reach ? best.cp : null;
   drawCps(nearCp);
   $('#bCatch').classList.toggle('hot', !!nearCp);
   const accTxt = `GPS ±${Math.round(acc)} m` + (lastRaw ? ' · <span style="color:#6b7480">⚫ chấm xám = GPS gốc</span>' : '');
-  if (!inSite) setStatus(DEMO ? `Bạn đang ở xa khu demo (${accTxt}). Hãy đến gần các vòng tròn trên bản đồ.` : `Bạn đang ở ngoài khuôn viên Nhà Văn hóa (${accTxt}). Hãy đến <b>160 Hạ Long, Vũng Tàu</b> để bắt đầu.`);
+  if (!inSite) setStatus(CITY ? (best ? `Linh vật gần nhất cách bạn khoảng <b>${(best.d / 1000).toFixed(1)} km</b> — ${best.cp.spot}. <span style="color:#5f6b78">(${accTxt})</span>` : `Bạn đã thu thập hết linh vật!`) : DEMO ? `Bạn đang ở xa khu demo (${accTxt}). Hãy đến gần các vòng tròn trên bản đồ.` : `Bạn đang ở ngoài khuôn viên Nhà Văn hóa (${accTxt}). Hãy đến <b>160 Hạ Long, Vũng Tàu</b> để bắt đầu.`);
   else if (!best) setStatus('🎉 Bạn đã thu thập đủ dấu ấn! Mở <b>Sổ tay</b> để nhận quà.');
   else if (nearCp) setStatus(`✨ <b>Bạn đã vào vùng phát hiện!</b> Bấm <b>Bắt dấu ấn</b> rồi tìm dấu ấn qua camera. <span style="color:#5f6b78">(${accTxt})</span>`);
   else setStatus(`Dấu ấn gần nhất: <b>${best.cp.spot}</b> — cách khoảng <b>${Math.round(best.d)} m</b>. <span style="color:#5f6b78">${accTxt}${acc > 25 ? ' · GPS yếu, có thể dùng Quét QR' : ''}</span>`);
@@ -908,8 +973,10 @@ function stopSeek() { if (seek) { cancelAnimationFrame(seek.raf); seek = null; }
 function revealMark(cp) {
   stopSeek(); const f = $('#encFloat'); f.onclick = null; f.classList.add('found');
   f.style.left = '50%'; f.style.top = '16%'; f.style.width = '';
-  $('#encBottom').innerHTML = `<div class="q">🎯 Tìm thấy dấu ấn!</div><div class="fact">${cp.fact}</div><button class="btn wide" id="encGo">✨ Thu thập dấu ấn</button>`;
-  $('#encGo').onclick = () => askQuestion(cp);
+  // chế độ thành phố: loại linh vật đã từng trả lời đúng thì bắt thêm không phải hỏi lại
+  const trung = CITY && daCoLoai(cp.icon);
+  $('#encBottom').innerHTML = `<div class="q">🎯 Tìm thấy ${trung ? `thêm một ${mascotName(cp.icon)}` : 'dấu ấn'}!</div><div class="fact">${cp.fact}</div><button class="btn wide" id="encGo">✨ ${trung ? 'Thu thập ngay' : 'Thu thập dấu ấn'}</button>`;
+  $('#encGo').onclick = () => trung ? collect(cp, 2) : askQuestion(cp);
 }
 function closeEncounter() {
   stopSeek();
@@ -937,7 +1004,7 @@ function collect(cp, tries) {
   if (caughtCount() >= CONFIG.REWARD_MIN && !S.finishedAt) S.finishedAt = Date.now();
   save(); sync(); renderHud(); drawCps(); if (me) updateMe(me.x, me.z, me.acc);
   $('#encFloat').classList.add('caught'); burst();
-  $('#encBottom').innerHTML = `<div class="q">🎉 Đã thu thập “${cp.name}”!</div><div class="fact">+${R.pts} điểm (${R.name})${bonus ? ` · +${bonus} điểm trả lời đúng ngay lần đầu` : ''}. Bạn có ${caughtCount()}/${CHECKPOINTS.length} dấu ấn.</div>
+  $('#encBottom').innerHTML = `<div class="q">🎉 Đã thu thập “${cp.name}”!</div><div class="fact">+${R.pts} điểm (${R.name})${bonus ? ` · +${bonus} điểm trả lời đúng ngay lần đầu` : ''}. ${CITY ? `Bạn có ${caughtCount()} linh vật · ${loaiCaught()}/${LOAI.length} loại.` : `Bạn có ${caughtCount()}/${CHECKPOINTS.length} dấu ấn.`}</div>
     <button class="btn wide" id="encDone">${caughtCount() >= CONFIG.REWARD_MIN ? '🎁 Nhận quà' : 'Tiếp tục hành trình'}</button>`;
   $('#encDone').onclick = () => { closeEncounter(); if (caughtCount() >= CONFIG.REWARD_MIN) openReward(); };
 }
@@ -974,11 +1041,20 @@ function stopScan() { clearInterval(scanTimer); if (scanStream) { scanStream.get
 
 // ---------- sổ tay ----------
 $('#bBook').onclick = () => {
-  $('#bookSub').innerHTML = `${caughtCount()}/${CHECKPOINTS.length} dấu ấn · ${S.score} điểm` + (caughtCount() >= CONFIG.REWARD_MIN ? ` · <a href="#" id="toReward">🎁 Nhận quà</a>` : ` · cần ${CONFIG.REWARD_MIN} dấu ấn để đổi quà`);
-  $('#bookGrid').innerHTML = CHECKPOINTS.map(cp => { const got = S.caught[cp.id], R = RARITY[cp.rarity];
-    return `<div class="card ${got ? '' : 'lock'}" style="border-color:${got ? R.color : 'transparent'}"><div class="pw">${photo(cp)}${got ? '' : '<span class="qm">?</span>'}</div><b>${got ? cp.name : '???'}</b><div class="r" style="color:${R.color}">${R.name}</div>${got ? '' : `<div style="color:#5f6b78;font-size:10.5px;margin-top:2px">${cp.spot.split(' (')[0]}</div>`}</div>`; }).join('');
-  $('#bookGrid').insertAdjacentHTML('afterend', '');
-  $('#bookCredits').innerHTML = '<b>Nguồn ảnh</b> (Wikimedia Commons, giấy phép tự do):<br>' + CHECKPOINTS.filter(c => PHOTOS[c.icon]).map(c => `${c.name}: ${credit(c)}`).join('<br>');
+  $('#bookSub').innerHTML = (CITY ? `${loaiCaught()}/${LOAI.length} loại linh vật · ${caughtCount()} dấu ấn · ${S.score} điểm` : `${caughtCount()}/${CHECKPOINTS.length} dấu ấn · ${S.score} điểm`) + (caughtCount() >= CONFIG.REWARD_MIN ? ` · <a href="#" id="toReward">🎁 Nhận quà</a>` : ` · cần ${CONFIG.REWARD_MIN} dấu ấn để đổi quà`);
+  if (CITY) {
+    // một thẻ cho mỗi LOẠI linh vật, kèm số lần đã bắt
+    $('#bookGrid').innerHTML = LOAI.map(icon => {
+      const ds = CHECKPOINTS.filter(c => c.icon === icon), mau = ds[0];
+      const sl = ds.filter(c => S.caught[c.id]).length, got = sl > 0, R = RARITY[mau.rarity];
+      return `<div class="card ${got ? '' : 'lock'}" style="border-color:${got ? R.color : 'transparent'}"><div class="pw">${photo(mau)}${got ? `<span class="qm" style="background:#2f9e6e;color:#fff">×${sl}</span>` : '<span class="qm">?</span>'}</div><b>${got ? mau.name : '???'}</b><div class="r" style="color:${R.color}">${got ? mascotName(icon) : R.name}</div><div style="color:#5f6b78;font-size:10.5px;margin-top:2px">${got ? `đã bắt ${sl}/${ds.length}` : `còn ${ds.length} con trong thành phố`}</div></div>`;
+    }).join('');
+  } else {
+    $('#bookGrid').innerHTML = CHECKPOINTS.map(cp => { const got = S.caught[cp.id], R = RARITY[cp.rarity];
+      return `<div class="card ${got ? '' : 'lock'}" style="border-color:${got ? R.color : 'transparent'}"><div class="pw">${photo(cp)}${got ? '' : '<span class="qm">?</span>'}</div><b>${got ? cp.name : '???'}</b><div class="r" style="color:${R.color}">${R.name}</div>${got ? '' : `<div style="color:#5f6b78;font-size:10.5px;margin-top:2px">${cp.spot.split(' (')[0]}</div>`}</div>`; }).join('');
+  }
+  const nguon = CITY ? LOAI.map(i => CHECKPOINTS.find(c => c.icon === i)) : CHECKPOINTS;
+  $('#bookCredits').innerHTML = '<b>Nguồn ảnh</b> (Wikimedia Commons, giấy phép tự do):<br>' + nguon.filter(c => PHOTOS[c.icon]).map(c => `${c.name}: ${credit(c)}`).join('<br>');
   const tr = $('#toReward'); if (tr) tr.onclick = e => { e.preventDefault(); closeModal('mBook'); openReward(); };
   openModal('mBook');
 };
