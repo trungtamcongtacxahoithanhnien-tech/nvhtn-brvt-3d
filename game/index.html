@@ -417,20 +417,30 @@ function initLeaflet() {
   LM.on('dragstart', () => { lmFollow = false; $('#zoomB').textContent = '◎ Gần tôi'; });
   LM.on('click', e => { if (testMode) { const { x, z } = toXZ(e.latlng.lat, e.latlng.lng); updateMe(x, z, 3); } });
   syncLeafletMarkers();
-  LM.on('moveend zoomend', syncLeafletMarkers);
+  LM.on('moveend zoomend', henSync);
   lmAcc = L.circle([demoC.lat, demoC.lon], { radius: 5, color: '#2a7fd0', weight: 1, fillOpacity: 0.15 });
   lmMe = L.marker([demoC.lat, demoC.lon], { interactive: false, zIndexOffset: 1000, icon: L.divIcon({ className: '', iconSize: [0, 0], html: `<div class="meico" id="lmMeIco">${CONE_SVG}<div class="dot"></div></div>` }) });
   LM.on('rotate', renderCompass);
   setTimeout(initWorld, 0);
   updateLeafletMarkers(nearCp);
-  setTimeout(() => { LM.invalidateSize(); syncLeafletMarkers(); }, 100);
+  setTimeout(() => { LM.invalidateSize(); lmSyncTai = null; syncLeafletMarkers(); }, 100);
 }
 // Chế độ thành phố có hàng trăm điểm: chỉ vẽ những điểm nằm trong khung nhìn (tối đa MAXMK điểm)
-const MAXMK = 260;
+const MAXMK = innerWidth < 700 ? 70 : 200;   // điện thoại gánh ít marker thôi
+let lmSyncHen = 0, lmSyncTai = null;
+// Bản đồ bám theo người chơi nên 'moveend' nổ liên tục ~60 lần/giây.
+// Hoãn lại và bỏ qua nếu tâm bản đồ chưa nhúc nhích bao nhiêu.
+function henSync() {
+  if (lmSyncHen) return;
+  lmSyncHen = setTimeout(() => { lmSyncHen = 0; syncLeafletMarkers(); }, 450);
+}
 function syncLeafletMarkers() {
   if (!LM) return;
   let list = CHECKPOINTS;
   if (CITY) {
+    const tam = LM.getCenter(), zoom = LM.getZoom();
+    if (lmSyncTai && lmSyncTai.zoom === zoom && LM.distance(tam, lmSyncTai.tam) < 70) return;
+    lmSyncTai = { tam, zoom };
     const b = LM.getBounds().pad(0.2);
     list = CHECKPOINTS.filter(cp => b.contains([cp.lat, cp.lon]));
     if (list.length > MAXMK) {
@@ -441,20 +451,28 @@ function syncLeafletMarkers() {
   const giu = new Set(list.map(c => c.id));
   for (const id of Object.keys(lmMarks)) {
     if (giu.has(+id)) continue;
-    const m = lmMarks[id]; LM.removeLayer(m.ring); LM.removeLayer(m.mk); delete lmMarks[id];
+    const m = lmMarks[id]; if (m.ring) LM.removeLayer(m.ring); LM.removeLayer(m.mk); delete lmMarks[id];
   }
   for (const cp of list) {
     if (lmMarks[cp.id]) continue;
     const col = RARITY[cp.rarity].color;
-    const ring = L.circle([cp.lat, cp.lon], { radius: CONFIG.CATCH_RADIUS, color: col, weight: 2, dashArray: '4 4', fillColor: col, fillOpacity: 0.08, interactive: false }).addTo(LM);
+    // chế độ thành phố: không vẽ vòng tròn cho từng điểm (hàng trăm hình SVG làm máy ì)
+    const ring = CITY ? null : L.circle([cp.lat, cp.lon], { radius: CONFIG.CATCH_RADIUS, color: col, weight: 2, dashArray: '4 4', fillColor: col, fillOpacity: 0.08, interactive: false }).addTo(LM);
     const mk = L.marker([cp.lat, cp.lon], { icon: L.divIcon({ className: '', iconSize: [34, 34], iconAnchor: [17, 17], html: '' }) }).addTo(LM);
     mk.on('click', () => { toast(S.caught[cp.id] ? `Đã thu thập: ${cp.name}` : `${mascotName(cp.icon)} (${cp.name}) ẩn tại: ${cp.spot}`, 3500); });
     lmMarks[cp.id] = { cp, ring, mk, st: '' };
   }
   updateLeafletMarkers(nearCp);
 }
+let lmVong = null;
 function updateLeafletMarkers(near) {
   if (!LM) return;
+  if (CITY) {   // một vòng bắt duy nhất, quanh linh vật gần nhất
+    if (near) {
+      if (!lmVong) lmVong = L.circle([near.lat, near.lon], { radius: CONFIG.CATCH_RADIUS, weight: 2, dashArray: '4 4', fillOpacity: 0.18, interactive: false }).addTo(LM);
+      lmVong.setLatLng([near.lat, near.lon]).setStyle({ color: RARITY[near.rarity].color, fillColor: RARITY[near.rarity].color });
+    } else if (lmVong) { LM.removeLayer(lmVong); lmVong = null; }
+  }
   const nhan = !CITY || LM.getZoom() >= 17;     // nhiều điểm quá thì giấu tên cho đỡ rối
   for (const id of Object.keys(lmMarks)) {
     const m = lmMarks[id], cp = m.cp; if (!cp) continue;
@@ -462,7 +480,7 @@ function updateLeafletMarkers(near) {
     if (m.st === st) continue; m.st = st;
     const ten = got ? cp.name : (CITY ? mascotName(cp.icon) : 'Điểm ' + cp.id);
     m.mk.setIcon(L.divIcon({ className: '', iconSize: [34, 34], iconAnchor: [17, 17], html: `<div class="cpico" style="background:${got ? '#2f9e6e' : (isNear ? col : '#1d2733')};border-color:${col}">${got ? '✓' : '?'}</div>${nhan ? `<span class="cplbl">${ten}</span>` : ''}` }));
-    m.ring.setStyle({ fillOpacity: isNear ? 0.3 : (got ? 0.02 : 0.08), opacity: got ? 0.4 : 1 });
+    if (m.ring) m.ring.setStyle({ fillOpacity: isNear ? 0.3 : (got ? 0.02 : 0.08), opacity: got ? 0.4 : 1 });
   }
 }
 // n dấu ấn chưa thu thập gần vị trí (x, z) nhất
