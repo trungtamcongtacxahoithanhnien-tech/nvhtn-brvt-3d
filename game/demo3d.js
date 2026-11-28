@@ -142,23 +142,26 @@ export function avatar({ gender = 'nam', shirt = '#1e88e5' } = {}) {
 export const avatarImage = opt => ASSET + 'avatar_' + ((opt && opt.gender) || 'nam') + '.webp';
 
 // ================= BẢN ĐỒ HOẠT HÌNH =================
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+const OVERPASS = ['https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass-api.de/api/interpreter'];
+const HEDGE = 6000;   // chờ ngần này chưa thấy trả lời thì hỏi thêm máy chủ kế tiếp
 async function fetchOSM(lat, lon, R, ms = 20000) {
   const ck = `osm-cache-${lat.toFixed(4)},${lon.toFixed(4)},${R}`;
   try { const c = localStorage.getItem(ck); if (c) return JSON.parse(c); } catch { }
   const a = `(around:${R},${lat},${lon})`;
   const q = `[out:json][timeout:25];(way["highway"]${a};way["building"]${a};way["leisure"~"park|garden|pitch|playground|stadium"]${a};way["landuse"~"grass|recreation_ground|village_green|forest"]${a};way["natural"~"water|wood|scrub"]${a};way["waterway"~"river|canal"]${a};);out geom;`;
-  for (const u of OVERPASS) {
-    try {
-      const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), ms);
-      const r = await fetch(u, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctl.signal });
-      clearTimeout(tm); if (!r.ok) continue;
-      const j = await r.json(), slim = j.elements.filter(e => e.geometry).map(e => ({ t: e.tags || {}, g: e.geometry.map(p => [+p.lat.toFixed(7), +p.lon.toFixed(7)]) }));
-      try { localStorage.setItem(ck, JSON.stringify(slim)); } catch { }
-      return slim;
-    } catch { }
-  }
-  return null;
+  // Hỏi gối đầu: máy chủ đầu tiên chưa trả lời sau HEDGE thì hỏi thêm máy kế tiếp,
+  // ai về trước thì lấy. Hỏi lần lượt thì một máy chết là chờ cộng dồn cả phút.
+  const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), ms);
+  const goi = u => fetch(u, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctl.signal })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+  const cho = n => new Promise(r => setTimeout(r, n));
+  let j = null;
+  try { j = await Promise.any(OVERPASS.map(async (u, i) => { if (i) await cho(i * HEDGE); return goi(u); })); } catch { }
+  clearTimeout(tm); ctl.abort();   // dừng những máy chủ còn đang chạy
+  if (!j || !j.elements) return null;
+  const slim = j.elements.filter(e => e.geometry).map(e => ({ t: e.tags || {}, g: e.geometry.map(p => [+p.lat.toFixed(7), +p.lon.toFixed(7)]) }));
+  try { localStorage.setItem(ck, JSON.stringify(slim)); } catch { }
+  return slim;
 }
 const ROADW = { motorway: 14, trunk: 13, primary: 12, secondary: 10, tertiary: 8, residential: 6, unclassified: 6, living_street: 5, service: 4, pedestrian: 4, footway: 2.4, path: 2, steps: 2, cycleway: 2.4, track: 3 };
 function stripGeo(pts, w, y) {   // dải đường phẳng + nút tròn ở khớp
@@ -178,7 +181,7 @@ const VIS_R = 150;    // bán kính dựng linh vật (m)
 const MAX_ITEM = 24;  // nhiều nhất ngần này con cùng lúc, chỗ đông quá thì lấy gần nhất
 const MAP_R = 330;    // bán kính tải bản đồ OSM (m) — nhỏ cho nhẹ vì nội thành rất dày nhà
 const MAP_MOVE = 220; // đi quá ngần này thì dựng lại bản đồ (m)
-const MAP_WAIT = 12000; // chờ mỗi máy chủ Overpass tối đa ngần này (ms)
+const MAP_WAIT = 22000; // tổng thời gian chờ Overpass (ms) — kumi có lúc mất 17 s
 
 export function createWorld({ host, center, toXZ, xzToLL, cps, stream = false, getState, onTapCp, onTapGround, onFrame }) {
   const W = () => host.clientWidth || innerWidth, H = () => host.clientHeight || innerHeight;
