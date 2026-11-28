@@ -50,3 +50,18 @@ Màn hình chơi dùng mô hình 3D Nhà Văn hóa (cùng mô hình ở trang ch
 - Demo tự đặt điểm quanh chỗ bạn đứng: …/game/?demo=here
 - Tùy chọn: `&r=5` bán kính bắt (m), `&s=10` khoảng cách giữa các điểm (m), `&rot=45` xoay lưới (độ, theo chiều kim đồng hồ) cho thẳng hàng với đường/tòa nhà. Thêm `#test` để chạm bản đồ giả lập vị trí.
 - Bản demo dùng bản đồ vệ tinh thật, lưu tiến độ riêng và **không** ghi vào bảng xếp hạng. Bấm “Làm lại” trên thanh demo để chơi lại từ đầu.
+
+## 7. Chế độ "Toàn Thành phố" (demo rải linh vật khắp TP.HCM)
+Mở: …/game/?demo=city — thêm `#test` để chạm bản đồ giả lập vị trí khi ngồi một chỗ.
+
+- **413 linh vật** rải khắp Thành phố Hồ Chí Minh sau hợp nhất (TP.HCM – Bình Dương – Bà Rịa Vũng Tàu – Côn Đảo). 16 loại linh vật, mỗi loại được **nhân bản nhiều lần**.
+- **Tập trung dày tại các điểm trong lịch trình KOL 2026**: Nhà khách T78, ĐH Hoa Sen (Thành Thái), Galaxy Innovation Hub và ga Metro Khu Công nghệ cao, Nhà hát Thành phố, phố đi bộ Nguyễn Huệ, Trụ sở UBND TP, Bảo tàng Chứng tích chiến tranh, Hầm vũ khí Biệt động Sài Gòn, chợ Bến Thành, Bảo tàng Lịch sử, Thảo Cầm Viên, khách sạn Kim Đô, bến Bạch Đằng, cầu Khánh Hội, cầu Ba Son, Nhà thờ Đức Bà, Bưu điện TP, Dinh Độc Lập, Hồ Con Rùa, công viên Giọt nước, Nhà Thiếu nhi TP, công viên Lê Thị Riêng, TT Dưỡng lão Thị Nghè, TT Nuôi dưỡng Bảo trợ trẻ em Gò Vấp, NVHTN TP.HCM, ĐH Kinh tế TP.HCM. Mỗi điểm có 5–19 linh vật trong bán kính 150 m.
+- Phần còn lại rải thưa khắp các quận huyện, Bình Dương, Vũng Tàu và Côn Đảo, để bản đồ toàn cảnh phủ kín thành phố.
+- **Mục tiêu:** sưu tầm đủ **16 loại** linh vật (không phải bắt hết 413 con). Thanh trạng thái hiện "x linh vật · y/16 loại". Đổi quà khi bắt được 20 con.
+- **Bắt linh vật trùng loại rất nhanh:** loại nào đã trả lời đúng câu hỏi một lần thì những con sau chỉ cần bấm "Thu thập ngay".
+- Bán kính bắt mặc định **25 m** (rộng hơn bản demo cũ vì đi ngoài phố). Đổi bằng `&r=`.
+- Mật độ đổi bằng `&d=`: `&d=0.5` thưa một nửa, `&d=2` dày gấp đôi.
+- Sổ tay hiển thị 16 thẻ theo **loại** linh vật, kèm số con đã bắt (ví dụ ×7).
+- Chế độ này **không** ghi bảng xếp hạng và lưu tiến độ riêng (không đụng tới game thật ở Vũng Tàu hay bản demo cũ).
+
+**Kỹ thuật:** danh sách địa điểm và cách sinh điểm nằm trong `game/city.js` — sửa `CITY_SPOTS` để thêm/bớt địa điểm hoặc đổi số linh vật (`n`) và bán kính rải (`r`). Vì bản đồ trải hàng chục km, `game/demo3d.js` chỉ dựng linh vật trong bán kính 300 m quanh người chơi và tải lại bản đồ OpenStreetMap mỗi khi người chơi đi quá 260 m; bản đồ Leaflet chỉ vẽ tối đa 260 điểm trong khung nhìn.
