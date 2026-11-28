@@ -174,7 +174,8 @@ function shapeOf(pts) { const s = new THREE.Shape(); pts.forEach(([x, z], i) => 
 
 // stream: chế độ "Toàn Thành phố" — hàng trăm linh vật trải trên hàng chục km.
 // Chỉ dựng linh vật quanh người chơi và tải lại bản đồ OSM khi người chơi đi xa tâm cũ.
-const VIS_R = 300;    // bán kính dựng linh vật (m)
+const VIS_R = 150;    // bán kính dựng linh vật (m)
+const MAX_ITEM = 24;  // nhiều nhất ngần này con cùng lúc, chỗ đông quá thì lấy gần nhất
 const MAP_R = 330;    // bán kính tải bản đồ OSM (m) — nhỏ cho nhẹ vì nội thành rất dày nhà
 const MAP_MOVE = 220; // đi quá ngần này thì dựng lại bản đồ (m)
 const MAP_WAIT = 12000; // chờ mỗi máy chủ Overpass tối đa ngần này (ms)
@@ -227,16 +228,20 @@ export function createWorld({ host, center, toXZ, xzToLL, cps, stream = false, g
     const playR = gan.length ? Math.max(18, ...gan.map(c => Math.hypot(c.x - mx, c.z - mz) + 8)) : 18;
     const P = g => g.map(([la, lo]) => { const p = toXZ(la, lo); return [p.x, p.z]; });
     const roadsO = [], roadsF = [], paths = [], parks = [], water = [], blds = [], pitches = [];
+    // Nội thành dày hàng nghìn nhà. Sương mù chỉ nhìn xa ~230 m nên dựng xa hơn thế là phí.
+    const XA = 230, TOI_DA_NHA = 400;
     for (const e of data) {
       const t = e.t, pts = P(e.g), closed = e.g.length > 3 && e.g[0][0] === e.g[e.g.length - 1][0] && e.g[0][1] === e.g[e.g.length - 1][1];
       if (t.highway && ROADW[t.highway]) {
         const w = ROADW[t.highway];
+        if (stream && pts.every(([x, z]) => Math.hypot(x - mx, z - mz) > XA)) continue;
         if (w <= 2.6) paths.push(...stripGeo(pts, w, 0.05));
         else { roadsO.push(...stripGeo(pts, w + 1.6, 0.03)); roadsF.push(...stripGeo(pts, w, 0.06)); }
       } else if (t.building && closed) {
         const lv = parseFloat(t['building:levels']) || 0, h = parseFloat(t.height) || (lv ? lv * 3.2 : 7 + (Math.abs(pts[0][0] * 7 + pts[0][1] * 3) % 6));
         // nhà thấp kiểu hoạt hình; nhà nằm trong khu chơi (gần các linh vật) chỉ còn nền phẳng để không che
         const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cz = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+        if (stream && (blds.length >= TOI_DA_NHA || Math.hypot(cx - mx, cz - mz) > XA)) continue;
         const inPlay = Math.hypot(cx - mx, cz - mz) < playR || pts.some(([x, z]) => Math.hypot(x - mx, z - mz) < playR * 0.8);
         const dh = inPlay ? 0.4 : Math.max(1.8, Math.min(6, h * 0.35));
         try { const g = new THREE.ExtrudeGeometry(shapeOf(pts.slice(0, -1)), { depth: dh, bevelEnabled: false }); g.rotateX(-Math.PI / 2); blds.push(g.toNonIndexed ? g : g); } catch { }
@@ -279,12 +284,11 @@ export function createWorld({ host, center, toXZ, xzToLL, cps, stream = false, g
     if (!stream) return;
     if (itemsAt && Math.hypot(x - itemsAt.x, z - itemsAt.z) < 40) return;
     itemsAt = { x, z };
-    const can = new Set();
-    for (const cp of cps) {
-      if (Math.hypot(cp.x - x, cp.z - z) > VIS_R) continue;
-      can.add(cp.id);
-      if (!pool.has(cp.id)) pool.set(cp.id, makeItem(cp));
-    }
+    const gan = [];
+    for (const cp of cps) { const d = Math.hypot(cp.x - x, cp.z - z); if (d < VIS_R) gan.push([cp, d]); }
+    gan.sort((a, b) => a[1] - b[1]);
+    const can = new Set(gan.slice(0, MAX_ITEM).map(p => p[0].id));
+    for (const [cp] of gan) if (can.has(cp.id) && !pool.has(cp.id)) pool.set(cp.id, makeItem(cp));
     for (const [id, it] of pool) if (!can.has(id)) { dropItem(it); pool.delete(id); }
   }
   const items = { [Symbol.iterator]: () => pool.values(), get list() { return [...pool.values()]; } };
